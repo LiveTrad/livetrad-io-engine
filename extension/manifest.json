@@ -4,26 +4,45 @@
   "version": "0.1.0",
   "description": "Real-time audio translation for online meetings",
   "permissions": [
-    "tabCapture",
     "activeTab",
-    "storage"
+    "storage",
+    "tabCapture",
+    "tabs",
+    "audioCapture"
   ],
   "host_permissions": [
     "*://*.google.com/*",
     "*://*.zoom.us/*",
     "*://*.teams.microsoft.com/*"
   ],
+  "background": {
+    "service_worker": "generated/background.js",
+    "type": "module"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
   "action": {
     "default_popup": "index.html"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["generated/*", "assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "content_scripts": [
     {
       "matches": [
-        "*://*.google.com/meet/*",
+        "*://*.google.com/*",
         "*://*.zoom.us/*",
         "*://*.teams.microsoft.com/*"
       ],
-      "js": ["generated/content.js"]
+      "js": ["generated/content.js"],
+      "css": [
+        "assets/content.css",
+        "assets/FloatingSwitch.css"
+      ]
     }
   ]
 }
