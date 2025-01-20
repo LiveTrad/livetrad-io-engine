@@ -23,7 +23,7 @@
         "*://*.zoom.us/*",
         "*://*.teams.microsoft.com/*"
       ],
-      "js": ["src/content.ts"]
+      "js": ["generated/content.js"]
     }
   ]
 }
