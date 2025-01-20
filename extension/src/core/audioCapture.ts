@@ -25,8 +25,13 @@ export class AudioCapture {
         latencyHint: 'interactive'
       });
 
-      // Capturer l'audio de l'onglet
-      this.mediaStream = await this.captureTabAudio();
+      // Utiliser getUserMedia pour capturer l'audio
+      this.mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: config.audio.sampleRate,
+          channelCount: config.audio.channels
+        }
+      });
       
       if (config.app.debug) {
         console.log('Audio stream captured:', this.mediaStream);
@@ -47,31 +52,6 @@ export class AudioCapture {
     return config.platforms.supported.some(platform => 
       currentUrl.includes(platform)
     );
-  }
-
-  private async captureTabAudio(): Promise<MediaStream> {
-    const constraints = {
-      audio: {
-        mandatory: {
-          chromeMediaSource: 'tab',
-          channelCount: config.audio.channels
-        }
-      },
-      video: false
-    };
-
-    try {
-      // Essayer d'abord la capture d'onglet
-      return await navigator.mediaDevices.getUserMedia(constraints as any);
-    } catch (error) {
-      console.warn('Tab capture failed, trying fallback:', error);
-      
-      // Fallback : capture audio standard
-      return await navigator.mediaDevices.getUserMedia({ 
-        audio: true, 
-        video: false 
-      });
-    }
   }
 
   private async setupAudioProcessing(): Promise<void> {
