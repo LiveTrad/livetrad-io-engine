@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "LiveTrad",
+  "version": "0.1.0",
+  "description": "Real-time audio translation for online meetings",
+  "permissions": [
+    "tabCapture",
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "*://*.google.com/*",
+    "*://*.zoom.us/*",
+    "*://*.teams.microsoft.com/*"
+  ],
+  "action": {
+    "default_popup": "index.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.google.com/meet/*",
+        "*://*.zoom.us/*",
+        "*://*.teams.microsoft.com/*"
+      ],
+      "js": ["src/content.ts"]
+    }
+  ]
+}
