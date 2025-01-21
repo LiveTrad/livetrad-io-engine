@@ -11,6 +11,39 @@ export class AudioCapture {
       console.log('LiveTrad AudioCapture: Initialized with config:', config);
     }
     this.setupConnection();
+    this.logState('After initialization');
+  }
+
+  private logState(context: string) {
+    console.log(`LiveTrad AudioCapture State [${context}]:`, {
+      mediaStream: {
+        exists: !!this.mediaStream,
+        tracks: this.mediaStream?.getTracks().map(track => ({
+          id: track.id,
+          kind: track.kind,
+          enabled: track.enabled,
+          muted: track.muted,
+          readyState: track.readyState
+        }))
+      },
+      audioContext: {
+        exists: !!this.audioContext,
+        state: this.audioContext?.state,
+        sampleRate: this.audioContext?.sampleRate,
+        baseLatency: this.audioContext?.baseLatency
+      },
+      audioWorklet: {
+        exists: !!this.audioWorklet,
+        numberOfInputs: this.audioWorklet?.numberOfInputs,
+        numberOfOutputs: this.audioWorklet?.numberOfOutputs,
+        channelCount: this.audioWorklet?.channelCount
+      },
+      port: {
+        exists: !!this.port,
+        name: this.port?.name,
+        connected: !this.port?.onDisconnect
+      }
+    });
   }
 
   private setupConnection() {
@@ -28,6 +61,7 @@ export class AudioCapture {
       });
 
       console.log('LiveTrad AudioCapture: Port connected successfully');
+      this.logState('After port connection');
     } catch (error) {
       console.error('LiveTrad AudioCapture: Error setting up connection:', error);
     }
@@ -58,8 +92,10 @@ export class AudioCapture {
         const source = this.audioContext.createMediaStreamSource(this.mediaStream);
         source.connect(this.audioWorklet);
         this.audioWorklet.connect(this.audioContext.destination);
+        console.log('LiveTrad AudioCapture: Connected existing stream to new worklet');
       }
 
+      this.logState('After processor setup');
     } catch (error) {
       console.error('LiveTrad AudioCapture: Error loading processor:', error);
     }
@@ -68,6 +104,7 @@ export class AudioCapture {
   async start(): Promise<{ success: boolean; error?: string }> {
     try {
       console.log('LiveTrad AudioCapture: Starting capture');
+      this.logState('Before starting capture');
       
       // Get the active tab
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -91,6 +128,15 @@ export class AudioCapture {
         });
       });
 
+      console.log('LiveTrad AudioCapture: Got media stream:', {
+        tracks: this.mediaStream.getTracks().map(track => ({
+          id: track.id,
+          kind: track.kind,
+          enabled: track.enabled,
+          muted: track.muted
+        }))
+      });
+
       // Create audio context and connect stream
       this.audioContext = new AudioContext();
       const source = this.audioContext.createMediaStreamSource(this.mediaStream);
@@ -99,21 +145,25 @@ export class AudioCapture {
       if (this.audioWorklet) {
         source.connect(this.audioWorklet);
         this.audioWorklet.connect(this.audioContext.destination);
+        console.log('LiveTrad AudioCapture: Connected to audio worklet');
       } else {
         // Otherwise connect directly to output
         source.connect(this.audioContext.destination);
+        console.log('LiveTrad AudioCapture: Connected directly to output');
       }
 
       // Request processor URL if we don't have a worklet
       if (!this.audioWorklet && this.port) {
+        console.log('LiveTrad AudioCapture: Requesting processor URL');
         this.port.postMessage({ type: 'GET_PROCESSOR_URL' });
       }
 
-      console.log('LiveTrad AudioCapture: Capture successful');
+      this.logState('After starting capture');
       return { success: true };
 
     } catch (error) {
       console.error('LiveTrad AudioCapture: Capture failed:', error);
+      this.logState('After capture failure');
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error)
@@ -123,6 +173,7 @@ export class AudioCapture {
 
   stop(): void {
     console.log('LiveTrad AudioCapture: Stopping capture');
+    this.logState('Before stopping');
     
     if (this.audioWorklet) {
       this.audioWorklet.disconnect();
@@ -140,5 +191,6 @@ export class AudioCapture {
     }
 
     console.log('LiveTrad AudioCapture: Stopped successfully');
+    this.logState('After stopping');
   }
 }
