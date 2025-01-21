@@ -6,9 +6,10 @@
   "permissions": [
     "activeTab",
     "storage",
-    "tabCapture",
     "tabs",
-    "audioCapture"
+    "scripting",
+    "tabCapture",
+    "offscreen"
   ],
   "host_permissions": [
     "*://*.google.com/*",
@@ -20,14 +21,14 @@
     "type": "module"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
+    "extension_pages": "script-src 'self'; object-src 'self'; media-src 'self' blob: mediastream:"
   },
   "action": {
     "default_popup": "index.html"
   },
   "web_accessible_resources": [
     {
-      "resources": ["generated/*", "assets/*"],
+      "resources": ["generated/*", "assets/*", "offscreen.html"],
       "matches": ["<all_urls>"]
     }
   ],

@@ -1,8 +1,8 @@
 import { config } from './config';
 
 export class AudioCapture {
-  private audioContext: AudioContext | null = null;
   private mediaStream: MediaStream | null = null;
+  private audioContext: AudioContext | null = null;
   private audioWorklet: AudioWorkletNode | null = null;
   private port: chrome.runtime.Port | null = null;
 
@@ -10,128 +10,135 @@ export class AudioCapture {
     if (config.app.debug) {
       console.log('LiveTrad AudioCapture: Initialized with config:', config);
     }
-    this.port = chrome.runtime.connect({ name: 'livetrad-audio' });
-    
-    this.port.onMessage.addListener((message) => {
-      console.log('LiveTrad AudioCapture: Received message:', message);
-      
-      if (message.type === 'PROCESSOR_URL_RESPONSE') {
-        this.handleProcessorUrlResponse(message.processorUrl);
-      }
-      
-      if (message.type === 'TAB_CAPTURE_RESPONSE') {
-        this.handleTabCaptureResponse(message);
-      }
-    });
+    this.setupConnection();
   }
+
+  private setupConnection() {
+    try {
+      this.port = chrome.runtime.connect({ name: 'livetrad-audio' });
+      
+      if (!this.port) {
+        throw new Error('Failed to create port connection');
+      }
+
+      this.port.onMessage.addListener(this.handleMessage.bind(this));
+      this.port.onDisconnect.addListener(() => {
+        console.log('LiveTrad AudioCapture: Port disconnected, attempting to reconnect...');
+        setTimeout(() => this.setupConnection(), 1000);
+      });
+
+      console.log('LiveTrad AudioCapture: Port connected successfully');
+    } catch (error) {
+      console.error('LiveTrad AudioCapture: Error setting up connection:', error);
+    }
+  }
+
+  private handleMessage = async (message: any) => {
+    console.log('LiveTrad AudioCapture: Received message:', message);
+    
+    if (message.type === 'PROCESSOR_URL_RESPONSE') {
+      await this.handleProcessorUrlResponse(message.processorUrl);
+    }
+  };
 
   private async handleProcessorUrlResponse(processorUrl: string) {
     try {
       if (!this.audioContext) {
         throw new Error('AudioContext is null');
       }
-      console.log('LiveTrad AudioCapture: Loading AudioWorklet module');
+
+      console.log('LiveTrad AudioCapture: Loading processor from URL:', processorUrl);
       await this.audioContext.audioWorklet.addModule(processorUrl);
-      console.log('LiveTrad AudioCapture: AudioWorklet module loaded');
       
-      // Demander la capture audio
-      console.log('LiveTrad AudioCapture: Requesting tab capture');
-      this.port?.postMessage({ type: 'START_TAB_CAPTURE' });
-    } catch (error) {
-      console.error('LiveTrad AudioCapture: Error loading AudioWorklet:', error);
-      throw error;
-    }
-  }
-
-  private async handleTabCaptureResponse(response: any) {
-    try {
-      if (!response.success) {
-        throw new Error(response.error || 'Tab capture failed');
-      }
-
-      if (!this.audioContext) {
-        throw new Error('AudioContext is null');
-      }
-
-      // Configurer le traitement audio
-      console.log('LiveTrad AudioCapture: Creating audio source');
-      const source = this.audioContext.createMediaStreamSource(this.mediaStream!);
-      
-      console.log('LiveTrad AudioCapture: Creating AudioWorkletNode');
       this.audioWorklet = new AudioWorkletNode(this.audioContext, 'audio-processor');
-      source.connect(this.audioWorklet);
-      this.audioWorklet.connect(this.audioContext.destination);
+      console.log('LiveTrad AudioCapture: Processor loaded successfully');
 
-      console.log('LiveTrad AudioCapture: Audio capture initialized successfully');
-    } catch (error) {
-      console.error('LiveTrad AudioCapture: Error setting up audio:', error);
-      throw error;
-    }
-  }
-
-  async initialize(): Promise<boolean> {
-    try {
-      console.log('LiveTrad AudioCapture: Starting initialization...');
-      
-      // Initialiser AudioContext
-      this.audioContext = new AudioContext({
-        sampleRate: config.audio.sampleRate,
-        latencyHint: 'interactive'
-      });
-      console.log('LiveTrad AudioCapture: AudioContext created with state:', this.audioContext.state);
-
-      // S'assurer que l'AudioContext est démarré
-      if (this.audioContext.state === 'suspended') {
-        console.log('LiveTrad AudioCapture: Resuming suspended AudioContext');
-        await this.audioContext.resume();
-      }
-
-      // Demander l'URL du processeur
-      console.log('LiveTrad AudioCapture: Requesting processor URL');
-      this.port?.postMessage({ type: 'GET_PROCESSOR_URL' });
-      
-      return true;
-    } catch (error) {
-      console.error('LiveTrad AudioCapture: Failed to initialize:', error);
-      return false;
-    }
-  }
-
-  async stop(): Promise<void> {
-    try {
-      console.log('LiveTrad AudioCapture: Stopping audio capture');
-      
-      // Informer le background script
-      this.port?.postMessage({ type: 'STOP_TAB_CAPTURE' });
-
-      if (this.audioWorklet) {
-        console.log('LiveTrad AudioCapture: Disconnecting AudioWorklet');
-        this.audioWorklet.disconnect();
-        this.audioWorklet = null;
-      }
-
+      // If we have a media stream, connect it to the worklet
       if (this.mediaStream) {
-        console.log('LiveTrad AudioCapture: Stopping media stream tracks');
-        this.mediaStream.getTracks().forEach(track => track.stop());
-        this.mediaStream = null;
+        const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+        source.connect(this.audioWorklet);
+        this.audioWorklet.connect(this.audioContext.destination);
       }
 
-      if (this.audioContext) {
-        console.log('LiveTrad AudioCapture: Closing AudioContext');
-        await this.audioContext.close();
-        this.audioContext = null;
-      }
-
-      if (this.port) {
-        console.log('LiveTrad AudioCapture: Disconnecting port');
-        this.port.disconnect();
-        this.port = null;
-      }
-
-      console.log('LiveTrad AudioCapture: Audio capture stopped successfully');
     } catch (error) {
-      console.error('LiveTrad AudioCapture: Error stopping audio capture:', error);
-      throw error;
+      console.error('LiveTrad AudioCapture: Error loading processor:', error);
     }
+  }
+
+  async start(): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log('LiveTrad AudioCapture: Starting capture');
+      
+      // Get the active tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) {
+        throw new Error('No active tab found');
+      }
+
+      // Start tab capture
+      this.mediaStream = await new Promise<MediaStream>((resolve, reject) => {
+        chrome.tabCapture.capture({
+          audio: true,
+          video: false
+        }, (stream) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else if (!stream) {
+            reject(new Error('Failed to get media stream'));
+          } else {
+            resolve(stream);
+          }
+        });
+      });
+
+      // Create audio context and connect stream
+      this.audioContext = new AudioContext();
+      const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+
+      // If we have a worklet, connect to it
+      if (this.audioWorklet) {
+        source.connect(this.audioWorklet);
+        this.audioWorklet.connect(this.audioContext.destination);
+      } else {
+        // Otherwise connect directly to output
+        source.connect(this.audioContext.destination);
+      }
+
+      // Request processor URL if we don't have a worklet
+      if (!this.audioWorklet && this.port) {
+        this.port.postMessage({ type: 'GET_PROCESSOR_URL' });
+      }
+
+      console.log('LiveTrad AudioCapture: Capture successful');
+      return { success: true };
+
+    } catch (error) {
+      console.error('LiveTrad AudioCapture: Capture failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  stop(): void {
+    console.log('LiveTrad AudioCapture: Stopping capture');
+    
+    if (this.audioWorklet) {
+      this.audioWorklet.disconnect();
+      this.audioWorklet = null;
+    }
+
+    if (this.mediaStream) {
+      this.mediaStream.getTracks().forEach(track => track.stop());
+      this.mediaStream = null;
+    }
+
+    if (this.audioContext) {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
+
+    console.log('LiveTrad AudioCapture: Stopped successfully');
   }
 }

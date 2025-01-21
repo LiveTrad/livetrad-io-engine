@@ -32,16 +32,10 @@ function Popup() {
           throw new Error('No active tab found');
         }
 
-        const success = await audioCapture.initialize();
-        console.log('LiveTrad: Initialize result:', success);
-        
-        if (success) {
-          setStatus('Audio running');
-          setIsEnabled(true);
-        } else {
-          setStatus('Audio failed');
-          setIsEnabled(false);
-        }
+        await audioCapture.start();
+        console.log('LiveTrad: Audio capture started');
+        setStatus('Audio running');
+        setIsEnabled(true);
       } else {
         console.log('LiveTrad: Stopping audio capture');
         if (audioCapture) {
