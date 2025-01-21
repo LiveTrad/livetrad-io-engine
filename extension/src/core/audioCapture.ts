@@ -102,6 +102,24 @@ export class AudioCapture {
     }
   }
 
+  private async requestScreenShare(): Promise<MediaStream> {
+    try {
+      // First try to get screen share permission
+      const stream = await navigator.mediaDevices.getDisplayMedia({ 
+        video: true,
+        audio: true 
+      });
+      
+      // Stop video track immediately as we only need audio
+      stream.getVideoTracks().forEach(track => track.stop());
+      
+      return stream;
+    } catch (error) {
+      console.error('LiveTrad AudioCapture: Screen share request failed:', error);
+      throw new Error('Please allow screen sharing to capture tab audio');
+    }
+  }
+
   async start(): Promise<{ success: boolean; error?: string }> {
     try {
       console.log('LiveTrad AudioCapture: Starting capture');
@@ -118,7 +136,10 @@ export class AudioCapture {
       const activeTab = tabs[0];
       console.log('LiveTrad AudioCapture: Active tab:', activeTab);
 
-      // Firefox uses getUserMedia with special constraints
+      // First request screen sharing permission
+      await this.requestScreenShare();
+
+      // Then try to capture tab audio
       try {
         this.mediaStream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -129,7 +150,7 @@ export class AudioCapture {
       } catch (error) {
         if (error instanceof Error) {
           if (error.name === 'OverconstrainedError') {
-            throw new Error('Unable to capture tab audio. Make sure you have selected a tab with audio playing.');
+            throw new Error('Unable to capture tab audio. Make sure you have selected a tab with audio playing and allowed screen sharing.');
           }
           throw error;
         }
