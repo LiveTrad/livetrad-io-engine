@@ -1,16 +1,15 @@
 import { config } from './config';
-import { browserAPI, isFirefox } from './browserAPI';
+import { browserAPI } from './browserAPI';
 
 export class AudioCapture {
   private mediaStream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
   private audioWorklet: AudioWorkletNode | null = null;
-  private port: chrome.runtime.Port | null = null;
+  private port: any = null;
 
   constructor() {
     if (config.app.debug) {
       console.log('LiveTrad AudioCapture: Initialized with config:', config);
-      console.log('LiveTrad AudioCapture: Browser:', isFirefox ? 'Firefox' : 'Chrome');
     }
     this.setupConnection();
     this.logState('After initialization');
@@ -18,7 +17,6 @@ export class AudioCapture {
 
   private logState(context: string) {
     console.log(`LiveTrad AudioCapture State [${context}]:`, {
-      browser: isFirefox ? 'Firefox' : 'Chrome',
       mediaStream: {
         exists: !!this.mediaStream,
         tracks: this.mediaStream?.getTracks().map(track => ({
@@ -120,25 +118,22 @@ export class AudioCapture {
       const activeTab = tabs[0];
       console.log('LiveTrad AudioCapture: Active tab:', activeTab);
 
-      // Start tab capture
-      if (isFirefox) {
-        // Firefox uses getUserMedia with special constraints
+      // Firefox uses getUserMedia with special constraints
+      try {
         this.mediaStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             mediaSource: 'browser',
             browserTab: activeTab.id
           } as MediaTrackConstraints
         });
-      } else {
-        try {
-          // Chrome uses tabCapture API
-          this.mediaStream = await browserAPI.tabCapture.capture({
-            audio: true,
-            video: false
-          });
-        } catch (error) {
-          throw new Error(`Tab capture failed: ${error instanceof Error ? error.message : String(error)}`);
+      } catch (error) {
+        if (error instanceof Error) {
+          if (error.name === 'OverconstrainedError') {
+            throw new Error('Unable to capture tab audio. Make sure you have selected a tab with audio playing.');
+          }
+          throw error;
         }
+        throw new Error('Unknown error during audio capture');
       }
 
       console.log('LiveTrad AudioCapture: Got media stream:', {
