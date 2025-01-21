@@ -1,4 +1,5 @@
 import { config } from './config';
+import { browserAPI, isFirefox } from './browserAPI';
 
 export class AudioCapture {
   private mediaStream: MediaStream | null = null;
@@ -9,6 +10,7 @@ export class AudioCapture {
   constructor() {
     if (config.app.debug) {
       console.log('LiveTrad AudioCapture: Initialized with config:', config);
+      console.log('LiveTrad AudioCapture: Browser:', isFirefox ? 'Firefox' : 'Chrome');
     }
     this.setupConnection();
     this.logState('After initialization');
@@ -16,6 +18,7 @@ export class AudioCapture {
 
   private logState(context: string) {
     console.log(`LiveTrad AudioCapture State [${context}]:`, {
+      browser: isFirefox ? 'Firefox' : 'Chrome',
       mediaStream: {
         exists: !!this.mediaStream,
         tracks: this.mediaStream?.getTracks().map(track => ({
@@ -48,7 +51,7 @@ export class AudioCapture {
 
   private setupConnection() {
     try {
-      this.port = chrome.runtime.connect({ name: 'livetrad-audio' });
+      this.port = browserAPI.runtime.connect({ name: 'livetrad-audio' });
       
       if (!this.port) {
         throw new Error('Failed to create port connection');
@@ -107,26 +110,36 @@ export class AudioCapture {
       this.logState('Before starting capture');
       
       // Get the active tab
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) {
+      const tabs = await browserAPI.tabs.query({ active: true, currentWindow: true });
+      console.log('LiveTrad AudioCapture: Found tabs:', tabs);
+      
+      if (!tabs || tabs.length === 0 || !tabs[0].id) {
         throw new Error('No active tab found');
       }
 
+      const activeTab = tabs[0];
+      console.log('LiveTrad AudioCapture: Active tab:', activeTab);
+
       // Start tab capture
-      this.mediaStream = await new Promise<MediaStream>((resolve, reject) => {
-        chrome.tabCapture.capture({
-          audio: true,
-          video: false
-        }, (stream) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else if (!stream) {
-            reject(new Error('Failed to get media stream'));
-          } else {
-            resolve(stream);
-          }
+      if (isFirefox) {
+        // Firefox uses getUserMedia with special constraints
+        this.mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            mediaSource: 'browser',
+            browserTab: activeTab.id
+          } as MediaTrackConstraints
         });
-      });
+      } else {
+        try {
+          // Chrome uses tabCapture API
+          this.mediaStream = await browserAPI.tabCapture.capture({
+            audio: true,
+            video: false
+          });
+        } catch (error) {
+          throw new Error(`Tab capture failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
 
       console.log('LiveTrad AudioCapture: Got media stream:', {
         tracks: this.mediaStream.getTracks().map(track => ({
@@ -171,7 +184,7 @@ export class AudioCapture {
     }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     console.log('LiveTrad AudioCapture: Stopping capture');
     this.logState('Before stopping');
     
@@ -186,7 +199,7 @@ export class AudioCapture {
     }
 
     if (this.audioContext) {
-      this.audioContext.close();
+      await this.audioContext.close();
       this.audioContext = null;
     }
 

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:firefox": "tsc && vite build && cp manifest.firefox.json dist/manifest.json",
     "watch": "vite build --watch",
     "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -19,13 +20,13 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@types/chrome": "^0.0.254",
+    "@types/chrome": "^0.0.260",
     "@types/node": "^20.10.6",
-    "@types/react": "^18.2.46",
+    "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
     "@vitejs/plugin-react": "^4.2.1",
     "terser": "^5.37.0",
     "typescript": "^5.3.3",
-    "vite": "^5.0.10"
+    "vite": "^5.0.12"
   }
 }

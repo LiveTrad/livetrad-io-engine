@@ -2,15 +2,15 @@ import * as React from 'react';
 
 interface FloatingSwitchProps {
   onToggle: (enabled: boolean) => void;
-  initialState?: boolean;
+  enabled?: boolean;
 }
 
-export function FloatingSwitch({ onToggle, initialState = false }: FloatingSwitchProps): JSX.Element {
-  const [enabled, setEnabled] = React.useState(initialState);
+export function FloatingSwitch({ onToggle, enabled = false }: FloatingSwitchProps): JSX.Element {
+  const [isEnabled, setIsEnabled] = React.useState(enabled);
 
   const handleToggle = () => {
-    const newState = !enabled;
-    setEnabled(newState);
+    const newState = !isEnabled;
+    setIsEnabled(newState);
     onToggle(newState);
   };
 
@@ -19,12 +19,12 @@ export function FloatingSwitch({ onToggle, initialState = false }: FloatingSwitc
       <label className="livetrad-switch">
         <input
           type="checkbox"
-          checked={enabled}
+          checked={isEnabled}
           onChange={handleToggle}
         />
         <span className="livetrad-slider"></span>
       </label>
-      <span className="livetrad-label">LiveTrad {enabled ? 'ON' : 'OFF'}</span>
+      <span className="livetrad-label">LiveTrad {isEnabled ? 'ON' : 'OFF'}</span>
     </div>
   );
 }

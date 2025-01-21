@@ -1,56 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
-import { AudioCapture } from '../core/audioCapture';
 import { FloatingSwitch } from '../components/FloatingSwitch';
+import { AudioCapture } from '../core/audioCapture';
 import '../components/FloatingSwitch.css';
 import './popup.css';
 import { config } from '../core/config';
 
 console.log('LiveTrad: Popup script loaded');
 
-let audioCapture: AudioCapture | null = null;
-
-function Popup() {
-  const [isEnabled, setIsEnabled] = useState(false);
+const Popup: React.FC = () => {
+  const [enabled, setEnabled] = useState(false);
+  const [audioCaptureInstance, setAudioCaptureInstance] = useState<AudioCapture | null>(null);
   const [status, setStatus] = useState('Not started');
 
-  const handleAudioToggle = async (enabled: boolean) => {
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (audioCaptureInstance) {
+        audioCaptureInstance.stop();
+      }
+    };
+  }, [audioCaptureInstance]);
+
+  const handleAudioToggle = useCallback(async (enabled: boolean) => {
     console.log('LiveTrad: Toggle clicked, enabled:', enabled);
     try {
       if (enabled) {
         console.log('LiveTrad: Starting audio capture');
-        if (!audioCapture) {
-          console.log('LiveTrad: Creating new AudioCapture instance');
-          audioCapture = new AudioCapture();
-        }
         
-        // Vérifier que nous sommes dans un onglet actif
-        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-        console.log('LiveTrad: Active tabs:', tabs);
-        
-        if (!tabs[0]?.id) {
-          throw new Error('No active tab found');
-        }
+        // Create new AudioCapture instance if needed
+        console.log('LiveTrad: Creating new AudioCapture instance');
+        const capture = new AudioCapture();
+        setAudioCaptureInstance(capture);
 
-        await audioCapture.start();
-        console.log('LiveTrad: Audio capture started');
-        setStatus('Audio running');
-        setIsEnabled(true);
-      } else {
-        console.log('LiveTrad: Stopping audio capture');
-        if (audioCapture) {
-          await audioCapture.stop();
-          audioCapture = null;
+        // Start capture
+        const result = await capture.start();
+        if (!result.success) {
+          throw new Error(result.error);
         }
+        setStatus('Audio running');
+      } else if (audioCaptureInstance) {
+        console.log('LiveTrad: Stopping audio capture');
+        await audioCaptureInstance.stop();
+        setAudioCaptureInstance(null);
         setStatus('Audio stopped');
-        setIsEnabled(false);
       }
+      setEnabled(enabled);
     } catch (error) {
       console.error('LiveTrad: Error handling audio toggle:', error);
+      setEnabled(false);
+      setAudioCaptureInstance(null);
       setStatus('Error: ' + (error as Error).message);
-      setIsEnabled(false);
     }
-  };
+  }, [audioCaptureInstance]);
 
   return (
     <div className="popup-container">
@@ -61,8 +63,8 @@ function Popup() {
       </div>
       <div className="controls-container">
         <FloatingSwitch
+          enabled={enabled}
           onToggle={handleAudioToggle}
-          initialState={isEnabled}
         />
       </div>
       <p className="text-xs text-gray-500">
@@ -70,21 +72,15 @@ function Popup() {
       </p>
     </div>
   );
-}
+};
 
-// Nettoyer lors de la fermeture
-window.addEventListener('unload', async () => {
-  console.log('LiveTrad: Popup unloading');
-  if (audioCapture) {
-    await audioCapture.stop();
-  }
-});
+// Create root element
+const root = document.createElement('div');
+root.id = 'root';
+document.body.appendChild(root);
 
-const root = ReactDOM.createRoot(
-  document.getElementById('root') as HTMLElement
-);
-
-root.render(
+// Render app
+ReactDOM.createRoot(root).render(
   <React.StrictMode>
     <Popup />
   </React.StrictMode>
