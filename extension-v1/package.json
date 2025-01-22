@@ -1,0 +1,31 @@
+{
+  "name": "livetrad-extension",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && cp manifest.json dist/manifest.json",
+    "build:firefox": "tsc && vite build && cp manifest.firefox.json dist/manifest.json",
+    "watch": "vite build --watch",
+    "preview": "vite preview",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@types/webextension-polyfill": "^0.10.7",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12",
+    "webextension-polyfill": "^0.10.0"
+  }
+}

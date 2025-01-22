@@ -1,39 +1,24 @@
 {
-  "manifest_version": 2,
+  "manifest_version": 3,
   "name": "LiveTrad",
-  "version": "0.1.0",
+  "version": "1.0",
   "description": "Real-time audio translation for online meetings",
   "permissions": [
-    "activeTab",
-    "storage",
-    "tabs",
-    "<all_urls>",
-    "webRequest"
+    "tabCapture",
+    "sidePanel",
+    "storage"
   ],
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "livetrad@example.com",
-      "strict_min_version": "57.0"
-    }
+  "side_panel": {
+    "default_path": "sidebar.html"
+  },
+  "action": {
+    "default_title": "Open LiveTrad"
   },
   "background": {
-    "scripts": ["generated/background.js"],
-    "persistent": true
+    "service_worker": "background.js"
   },
-  "browser_action": {
-    "default_popup": "index.html",
-    "default_title": "LiveTrad"
-  },
-  "web_accessible_resources": [
-    "generated/*",
-    "assets/*",
-    "offscreen.html"
-  ],
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["generated/content.js"],
-      "run_at": "document_start"
-    }
-  ]
+  "icons": {
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
 }
