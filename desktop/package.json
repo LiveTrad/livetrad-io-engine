@@ -1,12 +1,13 @@
 {
   "name": "livetrad-desktop",
   "version": "1.0.0",
-  "description": "LiveTrad Desktop Application",
+  "description": "Desktop application for LiveTrad",
   "main": "dist/main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "tsc && electron .",
     "build": "tsc",
+    "dev": "tsc && electron .",
+    "test": "echo \"Error: no test specified\" && exit 1",
     "watch": "tsc -w"
   },
   "author": "",
