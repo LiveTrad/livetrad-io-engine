@@ -1,18 +1,20 @@
 import { ConnectionState } from '../types';
+import { WebSocketConfig, defaultWebSocketConfig } from '../config/websocket.config';
 
 export class WebSocketService {
     private ws: WebSocket | null = null;
-    private readonly DESKTOP_URL = 'ws://localhost:8080';
+    private config: WebSocketConfig;
     private reconnectAttempts = 0;
-    private readonly MAX_RECONNECT_ATTEMPTS = 5;
     private reconnectTimeout: NodeJS.Timeout | null = null;
 
-    constructor() {}
+    constructor(config: WebSocketConfig = defaultWebSocketConfig) {
+        this.config = config;
+    }
 
     public connect(): Promise<ConnectionState> {
         return new Promise((resolve, reject) => {
             try {
-                this.ws = new WebSocket(this.DESKTOP_URL);
+                this.ws = new WebSocket(this.config.desktopUrl);
 
                 this.ws.onopen = () => {
                     console.log('Connected to desktop app');
@@ -61,17 +63,20 @@ export class WebSocketService {
             status: this.ws?.readyState === WebSocket.OPEN ? 'connected' : 
                    this.ws?.readyState === WebSocket.CONNECTING ? 'connecting' : 
                    'disconnected',
-            desktopUrl: this.DESKTOP_URL
+            desktopUrl: this.config.desktopUrl
         };
     }
 
     private handleDisconnect(): void {
-        if (this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
+        if (this.reconnectAttempts < this.config.maxReconnectAttempts) {
             this.reconnectAttempts++;
-            const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 10000);
+            const delay = Math.min(
+                this.config.initialReconnectDelay * Math.pow(2, this.reconnectAttempts),
+                this.config.maxReconnectDelay
+            );
             
             this.reconnectTimeout = setTimeout(() => {
-                console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})`);
+                console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.config.maxReconnectAttempts})`);
                 this.connect();
             }, delay);
         }

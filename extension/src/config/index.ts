@@ -32,17 +32,17 @@ const config: Config = {
     bufferSize: parseInt(process.env.AUDIO_BUFFER_SIZE || '4096')
   },
   platforms: {
-    supported: ['meet', 'zoom', 'teams'],
+    supported: (process.env.SUPPORTED_PLATFORMS || 'meet,zoom,teams').split(','),
     domains: {
-      meet: ['meet.google.com'],
-      zoom: ['zoom.us'],
-      teams: ['teams.microsoft.com']
+      meet: (process.env.MEET_DOMAINS || 'meet.google.com').split(','),
+      zoom: (process.env.ZOOM_DOMAINS || 'zoom.us').split(','),
+      teams: (process.env.TEAMS_DOMAINS || 'teams.microsoft.com').split(',')
     }
   },
   ws: {
-    url: process.env.WS_URL || 'ws://localhost:8000',
-    reconnectInterval: parseInt(process.env.WS_RECONNECT_INTERVAL || '1000'),
-    maxRetries: parseInt(process.env.WS_MAX_RETRIES || '5')
+    url: process.env.WS_DESKTOP_URL || 'ws://localhost:8080',
+    reconnectInterval: parseInt(process.env.WS_INITIAL_RECONNECT_DELAY || '1000'),
+    maxRetries: parseInt(process.env.WS_MAX_RECONNECT_ATTEMPTS || '5')
   }
 };
 
