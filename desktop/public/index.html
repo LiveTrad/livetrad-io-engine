@@ -18,17 +18,56 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .status {
-            padding: 10px;
+            padding: 15px;
             margin-bottom: 20px;
             border-radius: 4px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+        }
+        .status::before {
+            content: '';
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 10px;
         }
         .connected {
             background: #e8f5e9;
             color: #2e7d32;
         }
+        .connected::before {
+            background: #2e7d32;
+        }
         .disconnected {
             background: #ffebee;
             color: #c62828;
+        }
+        .disconnected::before {
+            background: #c62828;
+        }
+        #stats {
+            display: none;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        #stats h3 {
+            margin: 0 0 15px 0;
+            color: #37474f;
+        }
+        .stat-item {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        .stat-item strong {
+            color: #546e7a;
+            margin-right: 8px;
         }
     </style>
 </head>
