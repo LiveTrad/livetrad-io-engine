@@ -20,10 +20,32 @@
                     <div class="status-dot"></div>
                     <span id="connectionText">Disconnected</span>
                 </div>
+                <button id="connectButton" class="connect-button">
+                    <span class="material-icons-round">link</span>
+                    <span id="connectButtonText">Connect</span>
+                </button>
             </div>
         </header>
 
         <main class="main-content">
+            <section class="connection-details" id="connectionDetails" style="display: none;">
+                <div class="details-content">
+                    <h3>Connection Details</h3>
+                    <div class="detail-item">
+                        <span class="label">Status:</span>
+                        <span id="detailStatus">-</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="label">Desktop URL:</span>
+                        <span id="detailUrl">-</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="label">Last Event:</span>
+                        <span id="detailLastEvent">-</span>
+                    </div>
+                </div>
+            </section>
+
             <section class="tabs-section">
                 <div class="section-header">
                     <h2>Audio Source</h2>

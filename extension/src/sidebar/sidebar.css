@@ -450,3 +450,55 @@ h2 {
     padding: 0.875rem 1.75rem;
   }
 }
+
+.connect-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  background-color: #4a90e2;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+  margin-left: 16px;
+}
+
+.connect-button:hover {
+  background-color: #357abd;
+}
+
+.connect-button.disconnecting {
+  background-color: #e74c3c;
+}
+
+.connect-button.connecting {
+  background-color: #f39c12;
+}
+
+.connection-details {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  margin: 16px;
+  padding: 16px;
+}
+
+.connection-details h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  color: #2c3e50;
+}
+
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.detail-item .label {
+  color: #7f8c8d;
+  font-weight: 500;
+}

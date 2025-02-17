@@ -1,305 +1,187 @@
 import { TabInfo, AudioCaptureState, ConnectionState } from '../types';
+import { WebSocketService } from '../services/websocket';
 
 class AudioCaptureSidebar {
   private selectedTabId: number | null = null;
-  private mediaRecorder: MediaRecorder | null = null;
-  private audioChunks: Blob[] = [];
-  private recordingBlob: Blob | null = null;
+  private isStreaming: boolean = false;
   private audioContext: AudioContext | null = null;
   private stream: MediaStream | null = null;
-  private connectionState: ConnectionState | null = null;
+  private wsService: WebSocketService;
 
   private elements = {
     tabsList: document.getElementById('tabsList') as HTMLDivElement,
-    startButton: document.getElementById('startCapture') as HTMLButtonElement,
-    stopButton: document.getElementById('stopCapture') as HTMLButtonElement,
-    status: document.getElementById('status') as HTMLDivElement,
-    recordingIndicator: document.getElementById('recordingIndicator') as HTMLDivElement,
-    audioPlayer: document.getElementById('audioPlayer') as HTMLAudioElement,
-    downloadButton: document.getElementById('downloadButton') as HTMLButtonElement,
-    tabCountBadge: document.getElementById('tabCount') as HTMLSpanElement,
+    tabCount: document.getElementById('tabCount') as HTMLSpanElement,
+    streamingStatus: document.getElementById('streamingStatus') as HTMLDivElement,
     connectionIndicator: document.getElementById('connectionIndicator') as HTMLDivElement,
-    connectionText: document.getElementById('connectionText') as HTMLDivElement,
-    statusMessage: document.getElementById('statusMessage') as HTMLDivElement,
+    connectionText: document.getElementById('connectionText') as HTMLSpanElement,
+    statusMessage: document.getElementById('statusMessage') as HTMLSpanElement,
+    connectButton: document.getElementById('connectButton') as HTMLButtonElement,
+    connectButtonText: document.getElementById('connectButtonText') as HTMLSpanElement,
+    connectionDetails: document.getElementById('connectionDetails') as HTMLElement,
+    detailStatus: document.getElementById('detailStatus') as HTMLElement,
+    detailUrl: document.getElementById('detailUrl') as HTMLElement,
+    detailLastEvent: document.getElementById('detailLastEvent') as HTMLElement,
   };
 
   constructor() {
+    this.wsService = new WebSocketService();
     this.initializeEventListeners();
-    this.connectToDesktop();
     this.refreshTabs();
-    setInterval(() => this.refreshTabs(), 5000);
+    this.initializeUI();
   }
 
   private initializeEventListeners() {
-    this.elements.startButton.addEventListener('click', () => this.startCapture());
-    this.elements.stopButton.addEventListener('click', () => this.stopCapture());
-    this.elements.downloadButton.addEventListener('click', () => this.downloadRecording());
-  }
-
-  private async connectToDesktop() {
-    try {
-      const response = await chrome.runtime.sendMessage({ type: 'CONNECT_DESKTOP' });
-      if (response.success && response.connection) {
-        this.updateConnectionStatus(response.connection);
+    // Existing event listeners...
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message.type === 'connection_state') {
+        this.updateConnectionStatus(message.state);
       }
-    } catch (error) {
-      console.error('Failed to connect to desktop:', error);
-      this.updateConnectionStatus({ 
-        status: 'disconnected', 
-        desktopUrl: 'ws://localhost:8080' 
-      });
-    }
-  }
-
-  private updateConnectionStatus(state: ConnectionState) {
-    this.connectionState = state;
-    const indicator = this.elements.connectionIndicator;
-    const statusDot = indicator?.querySelector('.status-dot');
-    const statusText = this.elements.connectionText;
-
-    if (statusDot && statusText) {
-      statusDot.className = 'status-dot ' + state.status;
-      statusText.textContent = state.status.charAt(0).toUpperCase() + state.status.slice(1);
-    }
+    });
   }
 
   private async refreshTabs() {
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_TABS' });
-      if (response.success && response.tabs) {
-        this.updateTabsList(response.tabs);
-      }
+      const tabs = await chrome.runtime.sendMessage({ type: 'get_tabs' });
+      this.updateTabsList(tabs);
     } catch (error) {
-      this.showError(`Failed to get tabs: ${error}`);
+      console.error('Failed to get tabs:', error);
     }
   }
 
-  private async updateTabsList(tabs: TabInfo[]) {
-    const currentTabs = new Set(tabs.map(tab => tab.id));
-    const existingTabs = new Set<number>();
-    
-    // Remove tabs that are no longer audible
-    const tabElements = this.elements.tabsList.getElementsByClassName('tab-item');
-    for (let i = tabElements.length - 1; i >= 0; i--) {
-      const element = tabElements[i] as HTMLElement;
-      const tabId = Number(element.dataset.tabId);
-      if (!currentTabs.has(tabId)) {
-        this.elements.tabsList.removeChild(element);
-        existingTabs.delete(tabId); // Ensure tab is removed from existingTabs
-      } else {
-        existingTabs.add(tabId);
-      }
-    }
+  private updateTabsList(tabs: TabInfo[]) {
+    const { tabsList, tabCount } = this.elements;
+    tabsList.innerHTML = '';
+    tabCount.textContent = `${tabs.length} sources`;
 
-    // Add new audible tabs
-    for (const tab of tabs) {
-      if (tab.id && !existingTabs.has(tab.id)) {
-        const tabElement = document.createElement('div');
-        tabElement.className = 'tab-item';
-        if (tab.id === this.selectedTabId) {
-          tabElement.classList.add('selected');
-        }
+    tabs.forEach((tab) => {
+      const tabElement = document.createElement('div');
+      tabElement.className = 'tab-item';
+      tabElement.innerHTML = `
+        <div class="tab-content">
+          <img src="${tab.favIconUrl || 'default-favicon.png'}" alt="Tab icon" class="tab-icon">
+          <span class="tab-title">${tab.title}</span>
+        </div>
+        <button class="stream-button ${this.selectedTabId === tab.id ? 'streaming' : ''}">
+          ${this.selectedTabId === tab.id ? 'Stop' : 'Stream'}
+        </button>
+      `;
 
-        tabElement.innerHTML = `
-          <div class="tab-content">
-            <span class="material-icons-round">volume_up</span>
-            <div class="tab-info">
-              <div class="tab-title">${tab.title}</div>
-              <div class="tab-url">${tab.url}</div>
-            </div>
-          </div>
-        `;
+      const streamButton = tabElement.querySelector('.stream-button') as HTMLButtonElement;
+      streamButton.addEventListener('click', () => this.handleStreamToggle(tab));
 
-        tabElement.addEventListener('click', () => this.handleTabSelection(tab));
-        this.elements.tabsList.appendChild(tabElement);
-      }
-    }
+      tabsList.appendChild(tabElement);
+    });
 
-    // Update tab count with animation
-    this.updateTabCount(tabs.length);
-
-    // Update start button state
-    this.elements.startButton.disabled = tabs.length === 0 || this.selectedTabId === null;
+    this.animateTabCount();
   }
 
-  private async handleTabSelection(tab: TabInfo) {
-    if (!this.connectionState || this.connectionState.status !== 'connected') {
-      this.updateStatusMessage('Please wait for desktop connection');
-      return;
+  private async handleStreamToggle(tab: TabInfo) {
+    if (this.selectedTabId === tab.id) {
+      // Stop streaming
+      await this.stopStreaming(tab.id);
+    } else {
+      // Start streaming
+      await this.startStreaming(tab);
     }
+    this.refreshTabs();
+  }
 
+  private async startStreaming(tab: TabInfo) {
     try {
-      if (this.selectedTabId === tab.id) {
-        // Stop streaming
-        await chrome.runtime.sendMessage({ 
-          type: 'STOP_STREAMING', 
-          tabId: tab.id 
-        });
-        this.selectedTabId = null;
-      } else {
-        // Start streaming
-        const response = await chrome.runtime.sendMessage({ 
-          type: 'START_STREAMING', 
-          tabId: tab.id 
-        });
-        
-        if (response.success) {
-          this.selectedTabId = tab.id;
-          this.updateStatusMessage('Streaming audio...');
-        }
-      }
-      
-      await this.updateStreamingState();
-      await this.refreshTabs();
-    } catch (error) {
-      console.error('Error handling tab selection:', error);
-      this.updateStatusMessage('Failed to handle audio source');
-    }
-  }
-
-  private async updateStreamingState() {
-    const response = await chrome.runtime.sendMessage({ type: 'GET_STREAMING_STATE' });
-    if (response.success && response.state) {
-      this.updateUIState(response.state);
-    }
-  }
-
-  private updateUIState(state: AudioCaptureState) {
-    this.selectedTabId = state.activeTabId;
-    this.updateStatusMessage(
-      state.isStreaming 
-        ? 'Streaming audio...' 
-        : 'Select an audio source to start streaming'
-    );
-  }
-
-  private updateStatusMessage(message: string) {
-    const statusMessage = this.elements.statusMessage;
-    if (statusMessage) {
-      statusMessage.textContent = message;
-    }
-  }
-
-  private async startCapture() {
-    if (!this.selectedTabId) return;
-
-    try {
-      // First, activate the tab to get permission
-      await chrome.tabs.update(this.selectedTabId, { active: true });
-      
-      // Wait a bit for the tab to become active
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Create audio context
-      this.audioContext = new AudioContext();
-
-      // Capture tab audio
-      this.stream = await new Promise<MediaStream>((resolve, reject) => {
-        chrome.tabCapture.capture(
-          { 
-            audio: true,
-            video: false,
-            audioConstraints: {
-              mandatory: {
-                chromeMediaSource: 'tab'
-              }
-            }
-          },
-          (stream) => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
-            } else if (!stream) {
-              reject(new Error('Failed to capture tab audio'));
-            } else {
-              resolve(stream);
-            }
-          }
-        );
+      await chrome.runtime.sendMessage({
+        type: 'start_streaming',
+        tabId: tab.id
       });
-
-      // Set up audio routing
-      const source = this.audioContext.createMediaStreamSource(this.stream);
-      source.connect(this.audioContext.destination);
-
-      // Set up MediaRecorder
-      this.audioChunks = [];
-      this.mediaRecorder = new MediaRecorder(this.stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
-      
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.audioChunks.push(event.data);
-        }
-      };
-
-      this.mediaRecorder.onstop = () => {
-        this.recordingBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
-        this.elements.audioPlayer.src = URL.createObjectURL(this.recordingBlob);
-        this.elements.downloadButton.disabled = false;
-      };
-
-      this.mediaRecorder.start();
-      this.updateUIForRecording(true);
+      this.selectedTabId = tab.id;
+      this.isStreaming = true;
+      this.updateStreamingStatus('Streaming audio from: ' + tab.title);
     } catch (error) {
-      this.showError(`Failed to start capture: ${error}`);
-      // Clean up if there was an error
-      await this.stopCapture();
+      console.error('Failed to start streaming:', error);
+      this.updateStreamingStatus('Failed to start streaming');
     }
   }
 
-  private async stopCapture() {
+  private async stopStreaming(tabId: number) {
     try {
-      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-        this.mediaRecorder.stop();
-      }
-      
-      if (this.stream) {
-        this.stream.getTracks().forEach(track => track.stop());
-      }
-
-      if (this.audioContext) {
-        await this.audioContext.close();
-      }
-
-      this.stream = null;
-      this.audioContext = null;
-      this.updateUIForRecording(false);
+      await chrome.runtime.sendMessage({
+        type: 'stop_streaming',
+        tabId
+      });
+      this.selectedTabId = null;
+      this.isStreaming = false;
+      this.updateStreamingStatus('Streaming stopped');
     } catch (error) {
-      this.showError(`Failed to stop capture: ${error}`);
+      console.error('Failed to stop streaming:', error);
     }
   }
 
-  private updateUIForRecording(isRecording: boolean) {
-    this.elements.startButton.disabled = isRecording;
-    this.elements.stopButton.disabled = !isRecording;
-    this.elements.recordingIndicator.classList.toggle('active', isRecording);
-    this.elements.status.textContent = isRecording ? 'Recording...' : 'Ready';
+  private updateStreamingStatus(message: string) {
+    const { statusMessage } = this.elements;
+    statusMessage.textContent = message;
   }
 
-  private downloadRecording() {
-    if (!this.recordingBlob) return;
-
-    const url = URL.createObjectURL(this.recordingBlob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `tab-recording-${new Date().toISOString()}.webm`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  private showError(error: string) {
-    this.elements.status.textContent = error;
-    console.error(error);
-  }
-
-  private updateTabCount(count: number) {
-    const badge = this.elements.tabCountBadge;
-    badge.style.transform = 'scale(1.2)';
-    badge.textContent = `${count} tab${count !== 1 ? 's' : ''}`;
+  private animateTabCount() {
+    const badge = this.elements.tabCount;
+    badge.style.transform = 'scale(1.1)';
     setTimeout(() => {
       badge.style.transform = 'scale(1)';
     }, 200);
+  }
+
+  private initializeUI(): void {
+    this.elements.connectButton.addEventListener('click', async () => {
+      if (this.wsService.getConnectionState().status === 'connected') {
+        // Disconnect
+        this.updateLastEvent('Disconnecting from desktop app...');
+        this.elements.connectButton.classList.add('disconnecting');
+        this.elements.connectButtonText.textContent = 'Disconnecting...';
+        this.wsService.disconnect();
+        this.updateConnectionStatus({ status: 'disconnected', desktopUrl: '' });
+      } else {
+        // Connect
+        this.updateLastEvent('Connecting to desktop app...');
+        this.elements.connectButton.classList.add('connecting');
+        this.elements.connectButtonText.textContent = 'Connecting...';
+        
+        try {
+          const state = await this.wsService.connect();
+          this.updateConnectionStatus(state);
+          this.updateLastEvent('Connected successfully');
+        } catch (err) {
+          const error = err as Error;
+          this.updateLastEvent(`Connection failed: ${error.message}`);
+          this.updateConnectionStatus({ status: 'disconnected', desktopUrl: '' });
+        }
+      }
+    });
+
+    // Initial state update
+    this.updateConnectionStatus(this.wsService.getConnectionState());
+  }
+
+  private updateConnectionStatus(state: ConnectionState): void {
+    const { connectButton, connectButtonText, connectionText, connectionDetails, detailStatus, detailUrl } = this.elements;
+    const statusDot = document.querySelector('.status-dot') as HTMLElement;
+
+    // Update connection indicator
+    connectionText.textContent = state.status;
+    statusDot.className = 'status-dot ' + state.status;
+
+    // Update button state
+    connectButton.classList.remove('connecting', 'disconnecting');
+    connectButtonText.textContent = state.status === 'connected' ? 'Disconnect' : 'Connect';
+
+    // Update details
+    detailStatus.textContent = state.status;
+    detailUrl.textContent = state.desktopUrl || '-';
+    connectionDetails.style.display = state.status === 'connected' ? 'block' : 'none';
+
+    this.updateLastEvent(`Connection status changed to: ${state.status}`);
+  }
+
+  private updateLastEvent(event: string): void {
+    this.elements.detailLastEvent.textContent = event;
+    console.log('Event:', event);
   }
 }
 

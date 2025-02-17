@@ -14,16 +14,17 @@ export class WebSocketService {
     public connect(): Promise<ConnectionState> {
         return new Promise((resolve, reject) => {
             try {
+                console.log('Attempting to connect to:', this.config.desktopUrl);
                 this.ws = new WebSocket(this.config.desktopUrl);
 
                 this.ws.onopen = () => {
-                    console.log('Connected to desktop app');
+                    console.log('Successfully connected to desktop app');
                     this.reconnectAttempts = 0;
                     resolve(this.getConnectionState());
                 };
 
-                this.ws.onclose = () => {
-                    console.log('Disconnected from desktop app');
+                this.ws.onclose = (event) => {
+                    console.log('Disconnected from desktop app. Code:', event.code, 'Reason:', event.reason);
                     this.handleDisconnect();
                 };
 

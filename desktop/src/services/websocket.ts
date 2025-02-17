@@ -11,6 +11,7 @@ export class WebSocketService extends EventEmitter {
     }
 
     public init(): void {
+        console.log('Initializing WebSocket server...');
         this.wss = new WebSocketServer({ 
             port: config.websocket.port 
         });
@@ -20,30 +21,46 @@ export class WebSocketService extends EventEmitter {
     }
 
     private setupEventListeners(): void {
-        if (!this.wss) return;
+        if (!this.wss) {
+            console.error('WebSocket server not initialized');
+            return;
+        }
 
         this.wss.on('connection', this.handleConnection.bind(this));
         this.wss.on('error', (error) => {
             console.error('WebSocket server error:', error);
             this.emit('connection-change', false);
         });
+        this.wss.on('listening', () => {
+            console.log('WebSocket server is listening for connections');
+        });
     }
 
     private handleConnection(ws: WebSocket): void {
-        console.log('New client connected');
+        const clientId = Math.random().toString(36).substr(2, 9);
+        console.log(`New client connected (ID: ${clientId})`);
         this.connections.add(ws);
         this.emit('connection-change', true);
 
         ws.send(JSON.stringify({
             type: 'connection_status',
-            status: 'connected'
+            status: 'connected',
+            clientId: clientId
         }));
 
-        ws.on('message', (data) => this.handleMessage(ws, data));
-        ws.on('close', () => {
-            console.log('Client disconnected');
+        ws.on('message', (data) => {
+            console.log(`Received message from client ${clientId}`);
+            this.handleMessage(ws, data);
+        });
+        
+        ws.on('close', (code, reason) => {
+            console.log(`Client ${clientId} disconnected. Code: ${code}, Reason: ${reason}`);
             this.connections.delete(ws);
             this.emit('connection-change', this.connections.size > 0);
+        });
+
+        ws.on('error', (error) => {
+            console.error(`Error with client ${clientId}:`, error);
         });
     }
 
