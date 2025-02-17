@@ -82,9 +82,13 @@ class AudioCaptureManager {
       }
 
       // Request tab audio capture
-      const stream = await chrome.tabCapture.capture({
-        audio: true,
-        video: false
+      const stream = await new Promise<MediaStream | null>((resolve) => {
+        chrome.tabCapture.capture({
+          audio: true,
+          video: false
+        }, (stream) => {
+          resolve(stream);
+        });
       });
 
       if (!stream) {
@@ -99,8 +103,9 @@ class AudioCaptureManager {
       // Process audio data
       processor.onaudioprocess = (e) => {
         const audioData = e.inputBuffer.getChannelData(0);
-        const audioArray = Array.from(audioData);
-        this.wsService.sendAudioChunk(audioArray);
+        const audioArray = new Float32Array(audioData);
+        const audioBuffer = audioArray.buffer;
+        this.wsService.sendAudioChunk(audioBuffer);
       };
 
       // Connect the audio nodes
