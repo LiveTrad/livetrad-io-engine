@@ -11,6 +11,12 @@ export interface TabInfo {
   favIconUrl?: string;
 }
 
+export interface AudioSource {
+  id: string;
+  title: string;
+  tabId?: number;
+}
+
 export interface ConnectionState {
   status: 'connected' | 'disconnected' | 'connecting';
   desktopUrl: string;

@@ -1,5 +1,7 @@
 import { TabInfo, AudioCaptureState, ConnectionState } from '../types';
 import { WebSocketService } from '../services/websocket';
+import { AudioService, AudioSource } from '../services/audio';
+import { defaultWebSocketConfig } from '../config/websocket.config';
 
 class AudioCaptureSidebar {
   private selectedTabId: number | null = null;
@@ -7,6 +9,7 @@ class AudioCaptureSidebar {
   private audioContext: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private wsService: WebSocketService;
+  private audioService: AudioService;
 
   private elements = {
     tabsList: document.getElementById('tabsList') as HTMLDivElement,
@@ -21,13 +24,17 @@ class AudioCaptureSidebar {
     detailStatus: document.getElementById('detailStatus') as HTMLElement,
     detailUrl: document.getElementById('detailUrl') as HTMLElement,
     detailLastEvent: document.getElementById('detailLastEvent') as HTMLElement,
+    sourcesList: document.getElementById('sourcesList') as HTMLElement,
+    sourceCount: document.getElementById('sourceCount') as HTMLElement,
   };
 
   constructor() {
-    this.wsService = new WebSocketService();
+    this.wsService = new WebSocketService(defaultWebSocketConfig);
+    this.audioService = new AudioService();
     this.initializeEventListeners();
     this.refreshTabs();
     this.initializeUI();
+    this.initAudioSources();
   }
 
   private initializeEventListeners() {
@@ -37,6 +44,34 @@ class AudioCaptureSidebar {
         this.updateConnectionStatus(message.state);
       }
     });
+
+    // Listen for audio sources changes
+    this.audioService.on('sources-changed', (sources: AudioSource[]) => {
+      this.updateSourcesList(sources);
+    });
+
+    // Setup WebSocket connection button
+    this.elements.connectButton.addEventListener('click', async () => {
+      try {
+        const currentState = this.wsService.getConnectionState();
+        if (currentState.status === 'connected') {
+          this.wsService.disconnect();
+          this.updateConnectionStatus(this.wsService.getConnectionState());
+        } else {
+          const newState = await this.wsService.connect();
+          this.updateConnectionStatus(newState);
+        }
+      } catch (error) {
+        console.error('Connection error:', error);
+        this.updateConnectionStatus({
+          status: 'disconnected',
+          desktopUrl: this.wsService.getConnectionState().desktopUrl
+        });
+      }
+    });
+
+    // Initial connection status
+    this.updateConnectionStatus(this.wsService.getConnectionState());
   }
 
   private async refreshTabs() {
@@ -160,6 +195,7 @@ class AudioCaptureSidebar {
   }
 
   private updateConnectionStatus(state: ConnectionState): void {
+    const isConnected = state.status === 'connected';
     const { connectButton, connectButtonText, connectionText, connectionDetails, detailStatus, detailUrl } = this.elements;
     const statusDot = document.querySelector('.status-dot') as HTMLElement;
 
@@ -169,12 +205,12 @@ class AudioCaptureSidebar {
 
     // Update button state
     connectButton.classList.remove('connecting', 'disconnecting');
-    connectButtonText.textContent = state.status === 'connected' ? 'Disconnect' : 'Connect';
+    connectButtonText.textContent = isConnected ? 'Disconnect' : 'Connect';
 
     // Update details
     detailStatus.textContent = state.status;
     detailUrl.textContent = state.desktopUrl || '-';
-    connectionDetails.style.display = state.status === 'connected' ? 'block' : 'none';
+    connectionDetails.style.display = isConnected ? 'block' : 'none';
 
     this.updateLastEvent(`Connection status changed to: ${state.status}`);
   }
@@ -182,6 +218,59 @@ class AudioCaptureSidebar {
   private updateLastEvent(event: string): void {
     this.elements.detailLastEvent.textContent = event;
     console.log('Event:', event);
+  }
+
+  private initAudioSources() {
+    // Initial connection status
+    this.updateConnectionStatus(this.wsService.getConnectionState());
+  }
+
+  private updateSourcesList(sources: AudioSource[]) {
+    // Update source count
+    this.elements.sourceCount.textContent = `${sources.length} sources`;
+
+    // Clear current list
+    this.elements.sourcesList.innerHTML = '';
+
+    if (sources.length === 0) {
+      const noSourcesDiv = document.createElement('div');
+      noSourcesDiv.className = 'no-sources-message';
+      noSourcesDiv.innerHTML = `
+        <i class="info-icon">ℹ</i>
+        <span>No audio sources detected</span>
+      `;
+      this.elements.sourcesList.appendChild(noSourcesDiv);
+      return;
+    }
+
+    // Add each source to the list
+    sources.forEach(source => {
+      const li = document.createElement('li');
+      li.className = 'source-item';
+      if (source.id === this.audioService.getSelectedSource()?.id) {
+        li.classList.add('selected');
+      }
+
+      li.innerHTML = `
+        <span class="source-icon">🔊</span>
+        <span class="source-title">${source.title}</span>
+      `;
+
+      li.addEventListener('click', () => {
+        // Remove selected class from all items
+        this.elements.sourcesList.querySelectorAll('.source-item').forEach(item => {
+          item.classList.remove('selected');
+        });
+        
+        // Add selected class to clicked item
+        li.classList.add('selected');
+        
+        // Select the source
+        this.audioService.selectSource(source.id);
+      });
+
+      this.elements.sourcesList.appendChild(li);
+    });
   }
 }
 

@@ -502,3 +502,85 @@ h2 {
   color: #7f8c8d;
   font-weight: 500;
 }
+
+/* Audio Sources Section */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.section-header h2 {
+  font-size: 16px;
+  margin: 0;
+  color: #333;
+}
+
+.source-count {
+  font-size: 12px;
+  color: #666;
+  background: #f0f0f0;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.audio-sources {
+  background: #fff;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.no-sources-message {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  color: #666;
+  background: #f8f9fa;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.info-icon {
+  margin-right: 8px;
+  color: #5b6bff;
+  font-style: normal;
+}
+
+.sources-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.source-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.source-item:hover {
+  background: #eef0f2;
+}
+
+.source-item.selected {
+  background: #e8eaff;
+  border: 1px solid #5b6bff;
+}
+
+.source-icon {
+  margin-right: 8px;
+  color: #5b6bff;
+}
+
+.source-title {
+  flex-grow: 1;
+  font-size: 14px;
+  color: #333;
+}
