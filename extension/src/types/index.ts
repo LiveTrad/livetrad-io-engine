@@ -1,8 +1,7 @@
 export interface AudioCaptureState {
-  isCapturing: boolean;
+  isStreaming: boolean;
   activeTabId: number | null;
   stream: MediaStream | null;
-  mediaRecorder: MediaRecorder | null;
 }
 
 export interface TabInfo {
@@ -11,16 +10,25 @@ export interface TabInfo {
   url: string;
 }
 
+export interface ConnectionState {
+  status: 'connected' | 'disconnected' | 'connecting';
+  desktopUrl: string;
+}
+
 export type MessageType = {
-  type: 'START_CAPTURE';
+  type: 'START_STREAMING';
   tabId: number;
 } | {
-  type: 'STOP_CAPTURE';
+  type: 'STOP_STREAMING';
   tabId: number;
 } | {
-  type: 'GET_RECORDING_STATE';
+  type: 'GET_STREAMING_STATE';
 } | {
   type: 'GET_TABS';
+} | {
+  type: 'CONNECT_DESKTOP';
+} | {
+  type: 'DISCONNECT_DESKTOP';
 };
 
 export type ResponseType = {
@@ -28,6 +36,7 @@ export type ResponseType = {
   stream?: MediaStream;
   state?: AudioCaptureState;
   tabs?: TabInfo[];
+  connection?: ConnectionState;
 } | {
   success: false;
   error: string;

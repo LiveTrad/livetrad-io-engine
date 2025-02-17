@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tab Audio Capture</title>
+    <title>LiveTrad</title>
     <link rel="stylesheet" href="sidebar.css">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -12,53 +12,34 @@
     <div class="app-container">
         <header class="app-header">
             <div class="header-content">
-                <span class="material-icons-round">headphones</span>
-                <h1>Audio Capture</h1>
+                <span class="material-icons-round">translate</span>
+                <h1>LiveTrad</h1>
+            </div>
+            <div class="connection-status">
+                <div id="connectionIndicator" class="status-indicator">
+                    <div class="status-dot"></div>
+                    <span id="connectionText">Disconnected</span>
+                </div>
             </div>
         </header>
 
         <main class="main-content">
             <section class="tabs-section">
                 <div class="section-header">
-                    <h2>Available Sources</h2>
-                    <span class="badge" id="tabCount">0 tabs</span>
+                    <h2>Audio Source</h2>
+                    <span class="badge" id="tabCount">0 sources</span>
                 </div>
                 <div class="tabs-wrapper">
                     <div id="tabsList" class="tabs-list"></div>
                 </div>
             </section>
 
-            <section class="recording-section">
-                <div class="controls-section">
-                    <button id="startCapture" class="btn primary" disabled>
-                        <span class="material-icons-round">fiber_manual_record</span>
-                        Record
-                    </button>
-                    <button id="stopCapture" class="btn danger" disabled>
-                        <span class="material-icons-round">stop</span>
-                        Stop
-                    </button>
-                </div>
-
-                <div class="status-section">
-                    <div id="recordingIndicator" class="recording-indicator">
-                        <div class="pulse-ring"></div>
-                        <span class="material-icons-round">graphic_eq</span>
-                        Recording in progress
+            <section class="status-section">
+                <div id="streamingStatus" class="streaming-status">
+                    <div class="status-message">
+                        <span class="material-icons-round">info</span>
+                        <span id="statusMessage">Select an audio source to start streaming</span>
                     </div>
-                    <div id="status" class="status-text">Select a tab to start recording</div>
-                </div>
-            </section>
-
-            <section class="player-section">
-                <div class="section-header">
-                    <h2>Recording</h2>
-                    <button id="downloadButton" class="btn icon-btn secondary" disabled>
-                        <span class="material-icons-round">download</span>
-                    </button>
-                </div>
-                <div class="player-wrapper">
-                    <audio id="audioPlayer" controls></audio>
                 </div>
             </section>
         </main>

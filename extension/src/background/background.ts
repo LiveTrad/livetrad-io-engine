@@ -1,14 +1,17 @@
 import { AudioCaptureState, MessageType, ResponseType, TabInfo } from '../types';
+import { WebSocketService } from '../services/websocket';
 
 class AudioCaptureManager {
   private state: AudioCaptureState = {
-    isCapturing: false,
+    isStreaming: false,
     activeTabId: null,
-    stream: null,
-    mediaRecorder: null,
+    stream: null
   };
 
+  private wsService: WebSocketService;
+
   constructor() {
+    this.wsService = new WebSocketService();
     this.initializeListeners();
   }
 
@@ -24,18 +27,26 @@ class AudioCaptureManager {
           let response: ResponseType;
           
           switch (message.type) {
-            case 'START_CAPTURE':
-              response = await this.startCapture(message.tabId);
+            case 'START_STREAMING':
+              response = await this.startStreaming(message.tabId);
               break;
-            case 'STOP_CAPTURE':
-              response = await this.stopCapture(message.tabId);
+            case 'STOP_STREAMING':
+              response = await this.stopStreaming(message.tabId);
               break;
-            case 'GET_RECORDING_STATE':
+            case 'GET_STREAMING_STATE':
               response = { success: true, state: this.state };
               break;
             case 'GET_TABS':
               const tabs = await this.getAvailableTabs();
               response = { success: true, tabs };
+              break;
+            case 'CONNECT_DESKTOP':
+              const connectionState = await this.wsService.connect();
+              response = { success: true, connection: connectionState };
+              break;
+            case 'DISCONNECT_DESKTOP':
+              this.wsService.disconnect();
+              response = { success: true };
               break;
             default:
               response = { success: false, error: 'Unknown message type' };
@@ -58,10 +69,10 @@ class AudioCaptureManager {
     });
   }
 
-  private async startCapture(tabId: number): Promise<ResponseType> {
+  private async startStreaming(tabId: number): Promise<ResponseType> {
     try {
-      if (this.state.isCapturing) {
-        throw new Error('Already capturing audio');
+      if (this.state.isStreaming) {
+        throw new Error('Already streaming audio');
       }
 
       // Get the tab info
@@ -70,53 +81,50 @@ class AudioCaptureManager {
         throw new Error('Tab not found');
       }
 
-      // Create a MediaStream from the tab
-      const stream = await new Promise<MediaStream>((resolve, reject) => {
-        const options: chrome.tabCapture.CaptureOptions = {
-          audio: true,
-          video: false,
-          audioConstraints: {
-            mandatory: {
-              chromeMediaSource: 'tab',
-            },
-          },
-        };
-
-        // Execute tabCapture in the context of the service worker
-        chrome.tabs.sendMessage(tabId, { type: 'REQUEST_TAB_CAPTURE' }, async (response) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-            return;
-          }
-
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            resolve(stream);
-          } catch (error) {
-            reject(error);
-          }
-        });
+      // Request tab audio capture
+      const stream = await chrome.tabCapture.capture({
+        audio: true,
+        video: false
       });
+
+      if (!stream) {
+        throw new Error('Failed to capture tab audio');
+      }
+
+      // Setup audio processing
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+      // Process audio data
+      processor.onaudioprocess = (e) => {
+        const audioData = e.inputBuffer.getChannelData(0);
+        const audioArray = Array.from(audioData);
+        this.wsService.sendAudioChunk(audioArray);
+      };
+
+      // Connect the audio nodes
+      source.connect(processor);
+      processor.connect(audioContext.destination);
 
       // Update state with the new stream
       this.state = {
-        ...this.state,
-        isCapturing: true,
+        isStreaming: true,
         activeTabId: tabId,
-        stream,
+        stream
       };
 
       return { success: true, stream };
     } catch (error) {
-      console.error('Error starting capture:', error);
+      console.error('Error starting streaming:', error);
       return { success: false, error: String(error) };
     }
   }
 
-  private async stopCapture(tabId: number): Promise<ResponseType> {
+  private async stopStreaming(tabId: number): Promise<ResponseType> {
     try {
-      if (!this.state.isCapturing || this.state.activeTabId !== tabId) {
-        throw new Error('No active capture for this tab');
+      if (!this.state.isStreaming || this.state.activeTabId !== tabId) {
+        throw new Error('No active streaming for this tab');
       }
 
       if (this.state.stream) {
@@ -124,15 +132,14 @@ class AudioCaptureManager {
       }
 
       this.state = {
-        isCapturing: false,
+        isStreaming: false,
         activeTabId: null,
-        stream: null,
-        mediaRecorder: null,
+        stream: null
       };
 
       return { success: true };
     } catch (error) {
-      console.error('Error stopping capture:', error);
+      console.error('Error stopping streaming:', error);
       return { success: false, error: String(error) };
     }
   }
