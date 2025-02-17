@@ -4,7 +4,7 @@ import { config } from '../config/env';
 
 export class WebSocketService extends EventEmitter {
     private wss: WebSocketServer | null = null;
-    private connections: Set<WebSocket> = new Set();
+    private connections: Map<WebSocket, string> = new Map();
 
     constructor() {
         super();
@@ -29,7 +29,7 @@ export class WebSocketService extends EventEmitter {
         this.wss.on('connection', this.handleConnection.bind(this));
         this.wss.on('error', (error) => {
             console.error('WebSocket server error:', error);
-            this.emit('connection-change', false);
+            this.emit('connection-change', { status: false });
         });
         this.wss.on('listening', () => {
             console.log('WebSocket server is listening for connections');
@@ -39,8 +39,13 @@ export class WebSocketService extends EventEmitter {
     private handleConnection(ws: WebSocket): void {
         const clientId = Math.random().toString(36).substr(2, 9);
         console.log(`New client connected (ID: ${clientId})`);
-        this.connections.add(ws);
-        this.emit('connection-change', true);
+        this.connections.set(ws, clientId);
+        this.emit('connection-change', { 
+            status: true,
+            details: {
+                clientId: clientId
+            }
+        });
 
         ws.send(JSON.stringify({
             type: 'connection_status',
@@ -56,7 +61,12 @@ export class WebSocketService extends EventEmitter {
         ws.on('close', (code, reason) => {
             console.log(`Client ${clientId} disconnected. Code: ${code}, Reason: ${reason}`);
             this.connections.delete(ws);
-            this.emit('connection-change', this.connections.size > 0);
+            this.emit('connection-change', { 
+                status: this.connections.size > 0,
+                details: this.connections.size > 0 ? {
+                    clientId: Array.from(this.connections.values())[0]
+                } : null
+            });
         });
 
         ws.on('error', (error) => {
@@ -83,23 +93,29 @@ export class WebSocketService extends EventEmitter {
         }
     }
 
-    public getConnectionStatus(): boolean {
-        return this.connections.size > 0;
+    public getConnectionStatus(): { status: boolean, details?: any } {
+        const hasConnections = this.connections.size > 0;
+        return {
+            status: hasConnections,
+            details: hasConnections ? {
+                clientId: Array.from(this.connections.values())[0]
+            } : null
+        };
     }
 
-    public onConnectionChange(callback: (status: boolean) => void): void {
+    public onConnectionChange(callback: (data: { status: boolean, details?: any }) => void): void {
         this.on('connection-change', callback);
     }
 
     public close(): void {
         if (this.wss) {
-            for (const ws of this.connections) {
+            for (const ws of this.connections.keys()) {
                 ws.close();
             }
             this.connections.clear();
             this.wss.close();
             this.wss = null;
-            this.emit('connection-change', false);
+            this.emit('connection-change', { status: false });
         }
     }
 }

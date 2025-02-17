@@ -29,16 +29,16 @@ function updateStatus(isConnected, details = {}) {
 }
 
 // Listen for connection changes
-window.api.onConnectionChange((status) => {
-    console.log('Connection status changed:', status);
-    updateStatus(status);
+window.api.onConnectionChange((status, details) => {
+    console.log('Connection status changed:', status, 'details:', details);
+    updateStatus(status, details);
 });
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        const status = await window.api.getConnectionStatus();
-        updateStatus(status);
+        const { status, details } = await window.api.getConnectionStatus();
+        updateStatus(status, details);
     } catch (error) {
         console.error('Error getting connection status:', error);
         updateStatus(false);

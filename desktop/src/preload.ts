@@ -5,8 +5,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld(
     'api', {
         getConnectionStatus: () => ipcRenderer.invoke('get-connection-status'),
-        onConnectionChange: (callback: (status: boolean) => void) => {
-            ipcRenderer.on('connection-change', (_event, status) => callback(status));
+        onConnectionChange: (callback: (status: boolean, details: any) => void) => {
+            ipcRenderer.on('connection-change', (_event, { status, details }) => callback(status, details));
         }
     }
 );
