@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-contextBridge.exposeInMainWorld('api', {
-    // Add API methods here that will be available to the renderer process
-    getConnectionStatus: () => ipcRenderer.invoke('get-connection-status'),
-});
+// Expose protected methods that allow the renderer process to use
+// the ipcRenderer without exposing the entire object
+contextBridge.exposeInMainWorld(
+    'api', {
+        getConnectionStatus: () => ipcRenderer.invoke('get-connection-status'),
+        onConnectionChange: (callback: (status: boolean) => void) => {
+            ipcRenderer.on('connection-change', (_event, status) => callback(status));
+        }
+    }
+);

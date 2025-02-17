@@ -1,6 +1,7 @@
-import { app } from 'electron';
+import { app, ipcMain } from 'electron';
 import { MainWindow } from './window/main-window';
 import { WebSocketService } from './services/websocket';
+import path from 'path';
 
 class LiveTradApp {
     private mainWindow: MainWindow;
@@ -10,6 +11,20 @@ class LiveTradApp {
         this.mainWindow = new MainWindow();
         this.wsService = new WebSocketService();
         this.initApp();
+        this.setupIPC();
+    }
+
+    private setupIPC(): void {
+        ipcMain.handle('get-connection-status', () => {
+            return this.wsService.getConnectionStatus();
+        });
+
+        // Listen for WebSocket connection changes
+        this.wsService.onConnectionChange((status) => {
+            if (this.mainWindow.getWindow()) {
+                this.mainWindow.getWindow()!.webContents.send('connection-change', status);
+            }
+        });
     }
 
     private initApp(): void {
