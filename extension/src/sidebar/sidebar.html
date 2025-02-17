@@ -51,18 +51,37 @@
                     <h2>Audio Source</h2>
                     <span class="source-count" id="sourceCount">0 sources</span>
                 </div>
-                
-                <div class="audio-sources">
-                    <div id="noSourcesMessage" class="no-sources-message">
-                        <i class="info-icon">ℹ</i>
-                        <span>No potential audio sources found</span>
-                        <p class="help-text">Open a meeting tab (Meet, Zoom, Teams...) to see it here</p>
-                    </div>
-                    <ul id="sourcesList" class="sources-list">
-                        <!-- Sources will be added here dynamically -->
-                    </ul>
-                </div>
 
+                <div class="source-filters">
+                    <button class="filter-button active" data-filter="all">
+                        <span class="material-icons-round">list</span>
+                        Tous
+                    </button>
+                    <button class="filter-button" data-filter="with-audio">
+                        <span class="material-icons-round">volume_up</span>
+                        Avec Son
+                    </button>
+                    <button class="filter-button" data-filter="without-audio">
+                        <span class="material-icons-round">volume_off</span>
+                        Sans Son
+                    </button>
+                </div>
+                
+                <div class="sources-container">
+                    <div class="audio-sources">
+                        <div id="noSourcesMessage" class="no-sources-message">
+                            <i class="info-icon">ℹ</i>
+                            <span>No potential audio sources found</span>
+                            <p class="help-text">Open a meeting tab (Meet, Zoom, Teams...) to see it here</p>
+                        </div>
+                        <ul id="sourcesList" class="sources-list">
+                            <!-- Sources will be added here dynamically -->
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <section class="streaming-section">
                 <div class="streaming-controls">
                     <button id="startStreamingButton" class="stream-button" disabled>
                         <span class="button-icon">🎙️</span>

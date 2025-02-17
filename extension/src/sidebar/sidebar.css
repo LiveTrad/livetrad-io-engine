@@ -78,10 +78,10 @@ body {
 
 .main-content {
   flex: 1;
-  padding: 1.5rem 1rem;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  position: relative;
 }
 
 /* Typography */
@@ -504,6 +504,150 @@ h2 {
 }
 
 /* Audio Sources Section */
+.audio-sources-section {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.sources-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.audio-sources {
+  height: 100%;
+  overflow-y: auto;
+  padding: 0 16px;
+}
+
+.source-filters {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.filter-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 16px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-button:hover {
+  background: var(--bg-primary);
+}
+
+.filter-button.active {
+  background: var(--primary);
+  color: white;
+}
+
+.filter-button .material-icons-round {
+  font-size: 16px;
+}
+
+.streaming-section {
+  padding: 16px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  transition: transform 0.3s ease;
+}
+
+/* Quand la liste déborde, fixer la section streaming en bas */
+.streaming-section.fixed {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Ajouter un padding en bas de la liste quand streaming est fixed */
+.streaming-section.fixed + .sources-container {
+  padding-bottom: 120px; /* Hauteur approximative de la section streaming */
+}
+
+/* Streaming Controls */
+.streaming-controls {
+  margin-top: 16px;
+  text-align: center;
+}
+
+.stream-button {
+  background: #5b6bff;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  transition: all 0.2s;
+}
+
+.stream-button:disabled {
+  background: #e0e0e0;
+  color: #9e9e9e;
+  cursor: not-allowed;
+}
+
+.stream-button:not(:disabled):hover {
+  background: #4a59e5;
+  transform: translateY(-1px);
+}
+
+.stream-button .button-icon {
+  margin-right: 8px;
+}
+
+/* Streaming Status */
+.streaming-status {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.status-message {
+  display: flex;
+  align-items: center;
+  color: #666;
+  font-size: 14px;
+}
+
+.status-icon {
+  margin-right: 8px;
+}
+
+/* Active Streaming State */
+.streaming-active .stream-button {
+  background: #dc3545;
+}
+
+.streaming-active .stream-button:hover {
+  background: #c82333;
+}
+
+.streaming-active .status-message {
+  color: #28a745;
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -628,73 +772,4 @@ h2 {
   font-size: 12px;
   color: var(--text-color-secondary);
   margin-top: 4px;
-}
-
-/* Streaming Controls */
-.streaming-controls {
-  margin-top: 16px;
-  text-align: center;
-}
-
-.stream-button {
-  background: #5b6bff;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  transition: all 0.2s;
-}
-
-.stream-button:disabled {
-  background: #e0e0e0;
-  color: #9e9e9e;
-  cursor: not-allowed;
-}
-
-.stream-button:not(:disabled):hover {
-  background: #4a59e5;
-  transform: translateY(-1px);
-}
-
-.stream-button .button-icon {
-  margin-right: 8px;
-}
-
-/* Streaming Status */
-.streaming-status {
-  margin-top: 16px;
-  padding: 12px;
-  background: #f8f9fa;
-  border-radius: 8px;
-}
-
-.status-message {
-  display: flex;
-  align-items: center;
-  color: #666;
-  font-size: 14px;
-}
-
-.status-icon {
-  margin-right: 8px;
-}
-
-/* Active Streaming State */
-.streaming-active .stream-button {
-  background: #dc3545;
-}
-
-.streaming-active .stream-button:hover {
-  background: #c82333;
-}
-
-.streaming-active .status-message {
-  color: #28a745;
 }

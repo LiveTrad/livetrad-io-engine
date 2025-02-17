@@ -3,10 +3,14 @@ import { AudioService } from '../services/audio';
 import { defaultWebSocketConfig } from '../config/websocket.config';
 import { ConnectionState, AudioSource } from '../types';
 
+type FilterType = 'all' | 'with-audio' | 'without-audio';
+
 class Sidebar {
     private wsService: WebSocketService;
     private audioService: AudioService;
     private streaming: boolean = false;
+    private currentFilter: FilterType = 'all';
+    private currentSources: AudioSource[] = [];
 
     private elements = {
         connectButton: document.getElementById('connectButton') as HTMLButtonElement,
@@ -18,7 +22,10 @@ class Sidebar {
         noSourcesMessage: document.getElementById('noSourcesMessage') as HTMLElement,
         startStreamingButton: document.getElementById('startStreamingButton') as HTMLButtonElement,
         streamingStatus: document.getElementById('streamingStatus') as HTMLElement,
-        statusMessage: document.getElementById('statusMessage') as HTMLElement
+        statusMessage: document.getElementById('statusMessage') as HTMLElement,
+        streamingSection: document.querySelector('.streaming-section') as HTMLElement,
+        sourcesContainer: document.querySelector('.sources-container') as HTMLElement,
+        filterButtons: document.querySelectorAll('.filter-button') as NodeListOf<HTMLButtonElement>
     };
 
     constructor() {
@@ -32,6 +39,7 @@ class Sidebar {
         this.wsService = new WebSocketService(defaultWebSocketConfig);
         this.audioService = new AudioService();
         this.initializeEventListeners();
+        this.initializeIntersectionObserver();
     }
 
     private initializeEventListeners() {
@@ -40,14 +48,70 @@ class Sidebar {
 
         // Audio source selection events
         this.audioService.on('sources-changed', (sources: AudioSource[]) => {
-            this.updateSourcesList(sources);
+            this.currentSources = sources;
+            this.updateSourcesList();
         });
 
         // Streaming control events
         this.elements.startStreamingButton.addEventListener('click', this.toggleStreaming.bind(this));
 
+        // Filter events
+        this.elements.filterButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const filter = button.dataset.filter as FilterType;
+                this.setFilter(filter);
+            });
+        });
+
         // Initial states
         this.updateConnectionStatus(this.wsService.getConnectionState());
+    }
+
+    private initializeIntersectionObserver() {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach(entry => {
+                    if (!entry.isIntersecting) {
+                        this.elements.streamingSection.classList.add('fixed');
+                    } else {
+                        this.elements.streamingSection.classList.remove('fixed');
+                    }
+                });
+            },
+            {
+                root: null,
+                threshold: 1.0
+            }
+        );
+
+        // Observer le bas de la liste des sources
+        observer.observe(this.elements.sourcesContainer);
+    }
+
+    private setFilter(filter: FilterType) {
+        this.currentFilter = filter;
+        
+        // Update filter buttons
+        this.elements.filterButtons.forEach(button => {
+            if (button.dataset.filter === filter) {
+                button.classList.add('active');
+            } else {
+                button.classList.remove('active');
+            }
+        });
+
+        this.updateSourcesList();
+    }
+
+    private filterSources(sources: AudioSource[]): AudioSource[] {
+        switch (this.currentFilter) {
+            case 'with-audio':
+                return sources.filter(source => source.isAudible);
+            case 'without-audio':
+                return sources.filter(source => !source.isAudible);
+            default:
+                return sources;
+        }
     }
 
     private async handleConnectionClick() {
@@ -76,20 +140,20 @@ class Sidebar {
         this.elements.statusText.textContent = state.status;
         this.elements.connectButtonText.textContent = isConnected ? 'Disconnect' : 'Connect';
         
-        // Update streaming button state
         this.updateStreamingButtonState();
     }
 
-    private updateSourcesList(sources: AudioSource[]) {
+    private updateSourcesList() {
         if (!this.elements.sourceCount || !this.elements.sourcesList) {
             console.error('Required elements not found');
             return;
         }
 
-        this.elements.sourceCount.textContent = `${sources.length} sources`;
+        const filteredSources = this.filterSources(this.currentSources);
+        this.elements.sourceCount.textContent = `${filteredSources.length} sources`;
         this.elements.sourcesList.innerHTML = '';
 
-        if (sources.length === 0) {
+        if (filteredSources.length === 0) {
             this.elements.noSourcesMessage.style.display = 'flex';
             this.elements.sourcesList.style.display = 'none';
             this.updateStreamingButtonState();
@@ -99,7 +163,7 @@ class Sidebar {
         this.elements.noSourcesMessage.style.display = 'none';
         this.elements.sourcesList.style.display = 'block';
 
-        sources.forEach(source => {
+        filteredSources.forEach(source => {
             const li = document.createElement('li');
             li.className = 'source-item';
             
@@ -118,11 +182,15 @@ class Sidebar {
                 `<img src="${source.favIconUrl}" alt="" class="source-icon" />` :
                 '<span class="source-icon">🔊</span>';
 
+            const isSelected = source.id === this.audioService.getSelectedSource()?.id;
+
             li.innerHTML = `
                 ${favicon}
                 <span class="source-title">${source.title}</span>
                 <div class="source-actions">
-                    <button class="action-button ${source.isLocked ? 'locked' : ''}" data-action="lock">
+                    <button class="action-button ${source.isLocked ? 'locked' : ''}" 
+                            data-action="lock"
+                            ${!isSelected ? 'disabled' : ''}>
                         <span class="material-icons-round">${source.isLocked ? 'lock' : 'lock_open'}</span>
                     </button>
                 </div>
@@ -139,23 +207,29 @@ class Sidebar {
                 });
                 li.classList.add('selected');
                 this.audioService.selectSource(source.id);
+                this.updateSourcesList(); // Mettre à jour pour activer/désactiver les boutons de lock
                 this.updateStreamingButtonState();
             });
 
             // Lock button
-            const lockButton = li.querySelector('[data-action="lock"]');
-            lockButton?.addEventListener('click', (e) => {
-                e.stopPropagation(); // Empêcher la sélection de la source
-                this.audioService.toggleSourceLock(source.id);
-            });
+            const lockButton = li.querySelector('[data-action="lock"]') as HTMLButtonElement;
+            if (lockButton) {
+                lockButton.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Empêcher la sélection de la source
+                    if (isSelected) {
+                        this.audioService.toggleSourceLock(source.id);
+                    }
+                });
+            }
 
             this.elements.sourcesList.appendChild(li);
         });
     }
 
     private updateStreamingButtonState() {
+        const selectedSource = this.audioService.getSelectedSource();
         const canStream = this.wsService.getConnectionState().status === 'connected' 
-            && this.audioService.getSelectedSource() !== null;
+            && selectedSource !== null;
 
         this.elements.startStreamingButton.disabled = !canStream;
         
@@ -164,7 +238,9 @@ class Sidebar {
                 <span class="button-icon">🎙️</span>
                 Start Streaming
             `;
-            this.elements.statusMessage.textContent = 'Select a source and connect to start streaming';
+            this.elements.statusMessage.textContent = selectedSource ? 
+                'Connect to start streaming' : 
+                'Select a source and connect to start streaming';
             this.elements.streamingStatus.classList.remove('streaming-active');
         }
     }
