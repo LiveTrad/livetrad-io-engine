@@ -19,7 +19,7 @@
             <div class="connection-status">
                 <div id="connectionIndicator" class="status-indicator">
                     <div class="status-dot"></div>
-                    <span id="connectionText" class="status-text">Disconnected</span>
+                    <span id="connectionText" class="status-text">disconnected</span>
                 </div>
                 <button id="connectButton" class="connect-button">
                     <span class="material-icons-round">link</span>
@@ -55,7 +55,8 @@
                 <div class="audio-sources">
                     <div id="noSourcesMessage" class="no-sources-message">
                         <i class="info-icon">ℹ</i>
-                        <span>Select an audio source to start streaming</span>
+                        <span>No potential audio sources found</span>
+                        <p class="help-text">Open a meeting tab (Meet, Zoom, Teams...) to see it here</p>
                     </div>
                     <ul id="sourcesList" class="sources-list">
                         <!-- Sources will be added here dynamically -->

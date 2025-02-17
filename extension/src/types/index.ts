@@ -14,7 +14,11 @@ export interface TabInfo {
 export interface AudioSource {
   id: string;
   title: string;
-  tabId?: number;
+  url: string;
+  favIconUrl?: string;
+  isAudible: boolean;
+  isPotentialSource: boolean;
+  isLocked: boolean;
 }
 
 export interface ConnectionState {

@@ -558,31 +558,76 @@ h2 {
   display: flex;
   align-items: center;
   padding: 8px 12px;
-  margin-bottom: 4px;
-  background: #f8f9fa;
-  border-radius: 6px;
+  margin: 4px 0;
+  border-radius: 8px;
+  background: var(--surface-color);
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s ease;
+  position: relative;
 }
 
 .source-item:hover {
-  background: #eef0f2;
+  background: var(--surface-hover-color);
 }
 
 .source-item.selected {
-  background: #e8eaff;
-  border: 1px solid #5b6bff;
+  background: var(--primary-color-light);
+  border: 1px solid var(--primary-color);
 }
 
-.source-icon {
+.source-item.has-audio {
+  border-left: 3px solid var(--success-color);
+}
+
+.source-item.locked {
+  border: 1px solid var(--primary-color);
+  background: var(--surface-color);
+}
+
+.source-item .source-icon {
   margin-right: 8px;
-  color: #5b6bff;
+  font-size: 16px;
 }
 
-.source-title {
-  flex-grow: 1;
-  font-size: 14px;
-  color: #333;
+.source-item .source-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.source-item .source-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.source-item:hover .source-actions {
+  opacity: 1;
+}
+
+.source-item .action-button {
+  padding: 4px;
+  border-radius: 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-color);
+}
+
+.source-item .action-button:hover {
+  background: var(--surface-hover-color);
+}
+
+.source-item .action-button.locked {
+  color: var(--primary-color);
+}
+
+.help-text {
+  font-size: 12px;
+  color: var(--text-color-secondary);
+  margin-top: 4px;
 }
 
 /* Streaming Controls */

@@ -1,7 +1,7 @@
 import { WebSocketService } from '../services/websocket';
-import { AudioService, AudioSource } from '../services/audio';
+import { AudioService } from '../services/audio';
 import { defaultWebSocketConfig } from '../config/websocket.config';
-import { ConnectionState } from '../types';
+import { ConnectionState, AudioSource } from '../types';
 
 class Sidebar {
     private wsService: WebSocketService;
@@ -102,22 +102,51 @@ class Sidebar {
         sources.forEach(source => {
             const li = document.createElement('li');
             li.className = 'source-item';
+            
+            // Add classes based on source state
             if (source.id === this.audioService.getSelectedSource()?.id) {
                 li.classList.add('selected');
             }
+            if (source.isAudible) {
+                li.classList.add('has-audio');
+            }
+            if (source.isLocked) {
+                li.classList.add('locked');
+            }
+
+            const favicon = source.favIconUrl ? 
+                `<img src="${source.favIconUrl}" alt="" class="source-icon" />` :
+                '<span class="source-icon">🔊</span>';
 
             li.innerHTML = `
-                <span class="source-icon">🔊</span>
+                ${favicon}
                 <span class="source-title">${source.title}</span>
+                <div class="source-actions">
+                    <button class="action-button ${source.isLocked ? 'locked' : ''}" data-action="lock">
+                        <span class="material-icons-round">${source.isLocked ? 'lock' : 'lock_open'}</span>
+                    </button>
+                </div>
             `;
 
-            li.addEventListener('click', () => {
+            // Source selection
+            li.addEventListener('click', (e) => {
+                const target = e.target as HTMLElement;
+                // Ne pas sélectionner si on clique sur un bouton d'action
+                if (target.closest('.source-actions')) return;
+
                 this.elements.sourcesList.querySelectorAll('.source-item').forEach(item => {
                     item.classList.remove('selected');
                 });
                 li.classList.add('selected');
                 this.audioService.selectSource(source.id);
                 this.updateStreamingButtonState();
+            });
+
+            // Lock button
+            const lockButton = li.querySelector('[data-action="lock"]');
+            lockButton?.addEventListener('click', (e) => {
+                e.stopPropagation(); // Empêcher la sélection de la source
+                this.audioService.toggleSourceLock(source.id);
             });
 
             this.elements.sourcesList.appendChild(li);
