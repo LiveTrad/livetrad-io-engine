@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LiveTrad</title>
-    <link rel="stylesheet" href="sidebar.css">
+    <link rel="stylesheet" type="text/css" href="sidebar.css">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
@@ -13,6 +13,7 @@
         <header class="app-header">
             <div class="header-content">
                 <span class="material-icons-round">translate</span>
+                <!--<img src="../icons/icon-48.png" alt="LiveTrad" class="logo">-->
                 <h1>LiveTrad</h1>
             </div>
             <div class="connection-status">
@@ -52,13 +53,27 @@
                 </div>
                 
                 <div class="audio-sources">
-                    <div class="no-sources-message">
+                    <div id="noSourcesMessage" class="no-sources-message">
                         <i class="info-icon">ℹ</i>
                         <span>Select an audio source to start streaming</span>
                     </div>
                     <ul id="sourcesList" class="sources-list">
                         <!-- Sources will be added here dynamically -->
                     </ul>
+                </div>
+
+                <div class="streaming-controls">
+                    <button id="startStreamingButton" class="stream-button" disabled>
+                        <span class="button-icon">🎙️</span>
+                        Start Streaming
+                    </button>
+                </div>
+
+                <div id="streamingStatus" class="streaming-status">
+                    <div class="status-message">
+                        <span class="status-icon">⏸️</span>
+                        <span id="statusMessage">Streaming inactive</span>
+                    </div>
                 </div>
             </section>
         </main>

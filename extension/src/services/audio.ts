@@ -23,9 +23,11 @@ export class AudioService extends EventEmitter {
 
     private async updateSources() {
         try {
+            // Obtenir tous les onglets
             const tabs = await chrome.tabs.query({});
             const audioSources: AudioSource[] = [];
 
+            // Filtrer les onglets qui ont du son
             for (const tab of tabs) {
                 if (tab.audible) {
                     audioSources.push({
@@ -38,6 +40,11 @@ export class AudioService extends EventEmitter {
 
             // Émettre seulement si les sources ont changé
             if (JSON.stringify(this.sources) !== JSON.stringify(audioSources)) {
+                // Si la source sélectionnée n'existe plus, la désélectionner
+                if (this.selectedSource && !audioSources.find(s => s.id === this.selectedSource?.id)) {
+                    this.selectedSource = null;
+                }
+
                 this.sources = audioSources;
                 this.emit('sources-changed', this.sources);
             }
@@ -47,7 +54,7 @@ export class AudioService extends EventEmitter {
     }
 
     private startSourceChecking() {
-        // Vérifier toutes les 1 secondes
+        // Vérifier toutes les secondes
         this.checkInterval = setInterval(() => this.updateSources(), 1000);
     }
 

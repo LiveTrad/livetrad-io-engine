@@ -26,6 +26,7 @@ class AudioCaptureSidebar {
     detailLastEvent: document.getElementById('detailLastEvent') as HTMLElement,
     sourcesList: document.getElementById('sourcesList') as HTMLElement,
     sourceCount: document.getElementById('sourceCount') as HTMLElement,
+    startStreamingButton: document.getElementById('startStreamingButton') as HTMLButtonElement,
   };
 
   constructor() {
@@ -72,6 +73,9 @@ class AudioCaptureSidebar {
 
     // Initial connection status
     this.updateConnectionStatus(this.wsService.getConnectionState());
+
+    // Streaming control events
+    this.elements.startStreamingButton.addEventListener('click', this.toggleStreaming.bind(this));
   }
 
   private async refreshTabs() {
@@ -226,10 +230,7 @@ class AudioCaptureSidebar {
   }
 
   private updateSourcesList(sources: AudioSource[]) {
-    // Update source count
     this.elements.sourceCount.textContent = `${sources.length} sources`;
-
-    // Clear current list
     this.elements.sourcesList.innerHTML = '';
 
     if (sources.length === 0) {
@@ -271,6 +272,44 @@ class AudioCaptureSidebar {
 
       this.elements.sourcesList.appendChild(li);
     });
+  }
+
+  private updateStreamingButtonState() {
+    const canStream = this.wsService.getConnectionState().status === 'connected' 
+        && this.audioService.getSelectedSource() !== null;
+
+    this.elements.startStreamingButton.disabled = !canStream;
+    
+    if (!canStream) {
+      this.elements.startStreamingButton.innerHTML = `
+        <span class="button-icon">🎙️</span>
+        Start Streaming
+      `;
+      this.elements.statusMessage.innerHTML = 'Select a source and connect to start streaming';
+      this.elements.streamingStatus.classList.remove('streaming-active');
+    }
+  }
+
+  private toggleStreaming() {
+    if (!this.isStreaming) {
+      // Start streaming
+      this.isStreaming = true;
+      this.elements.startStreamingButton.innerHTML = `
+        <span class="button-icon">⏹️</span>
+        Stop Streaming
+      `;
+      this.elements.statusMessage.innerHTML = 'Streaming active';
+      this.elements.streamingStatus.classList.add('streaming-active');
+    } else {
+      // Stop streaming
+      this.isStreaming = false;
+      this.elements.startStreamingButton.innerHTML = `
+        <span class="button-icon">🎙️</span>
+        Start Streaming
+      `;
+      this.elements.statusMessage.innerHTML = 'Streaming stopped';
+      this.elements.streamingStatus.classList.remove('streaming-active');
+    }
   }
 }
 
