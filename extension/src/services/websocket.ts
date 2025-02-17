@@ -6,6 +6,7 @@ export class WebSocketService {
     private config: WebSocketConfig;
     private reconnectAttempts = 0;
     private reconnectTimeout: NodeJS.Timeout | null = null;
+    private isVoluntaryDisconnect = false;
 
     constructor(config: WebSocketConfig = defaultWebSocketConfig) {
         this.config = config;
@@ -14,6 +15,7 @@ export class WebSocketService {
     public connect(): Promise<ConnectionState> {
         return new Promise((resolve, reject) => {
             try {
+                this.isVoluntaryDisconnect = false;
                 console.log('Attempting to connect to:', this.config.desktopUrl);
                 this.ws = new WebSocket(this.config.desktopUrl);
 
@@ -41,6 +43,7 @@ export class WebSocketService {
 
     public disconnect(): void {
         if (this.ws) {
+            this.isVoluntaryDisconnect = true;
             this.ws.close();
             this.ws = null;
         }
@@ -69,6 +72,11 @@ export class WebSocketService {
     }
 
     private handleDisconnect(): void {
+        if (this.isVoluntaryDisconnect) {
+            console.log('Voluntary disconnect - not attempting to reconnect');
+            return;
+        }
+
         if (this.reconnectAttempts < this.config.maxReconnectAttempts) {
             this.reconnectAttempts++;
             const delay = Math.min(
