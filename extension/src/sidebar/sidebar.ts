@@ -2,6 +2,7 @@ import { WebSocketService } from '../services/websocket';
 import { AudioService } from '../services/audio';
 import { defaultWebSocketConfig } from '../config/websocket.config';
 import { ConnectionState, AudioSource } from '../types';
+import { defaultConfig, audioSourceDomains } from '../config/audio.config';
 
 type FilterType = 'all' | 'with-audio' | 'without-audio';
 
@@ -11,6 +12,7 @@ class Sidebar {
     private streaming: boolean = false;
     private currentFilter: FilterType = 'all';
     private currentSources: AudioSource[] = [];
+    private showAllTabs: boolean = defaultConfig.showAllTabs;
 
     private elements = {
         connectButton: document.getElementById('connectButton') as HTMLButtonElement,
@@ -25,7 +27,11 @@ class Sidebar {
         statusMessage: document.getElementById('statusMessage') as HTMLElement,
         streamingSection: document.querySelector('.streaming-section') as HTMLElement,
         sourcesContainer: document.querySelector('.sources-container') as HTMLElement,
-        filterButtons: document.querySelectorAll('.filter-button') as NodeListOf<HTMLButtonElement>
+        filterButtons: document.querySelectorAll('.filter-button') as NodeListOf<HTMLButtonElement>,
+        showAllTabsCheckbox: document.getElementById('showAllTabs') as HTMLInputElement,
+        tabDetails: document.getElementById('tabDetails') as HTMLElement,
+        tabTitle: document.getElementById('tabTitle') as HTMLElement,
+        tabUrl: document.getElementById('tabUrl') as HTMLElement,
     };
 
     constructor() {
@@ -40,6 +46,12 @@ class Sidebar {
         this.audioService = new AudioService();
         this.initializeEventListeners();
         this.initializeIntersectionObserver();
+
+        this.elements.showAllTabsCheckbox.checked = this.showAllTabs;
+        this.elements.showAllTabsCheckbox.addEventListener('change', (e) => {
+            this.showAllTabs = (e.target as HTMLInputElement).checked;
+            this.updateSourcesList();
+        });
     }
 
     private initializeEventListeners() {
@@ -144,85 +156,62 @@ class Sidebar {
     }
 
     private updateSourcesList() {
-        if (!this.elements.sourceCount || !this.elements.sourcesList) {
-            console.error('Required elements not found');
-            return;
-        }
-
-        const filteredSources = this.filterSources(this.currentSources);
-        this.elements.sourceCount.textContent = `${filteredSources.length} sources`;
-        this.elements.sourcesList.innerHTML = '';
-
-        if (filteredSources.length === 0) {
-            this.elements.noSourcesMessage.style.display = 'flex';
-            this.elements.sourcesList.style.display = 'none';
-            this.updateStreamingButtonState();
-            return;
-        }
-
-        this.elements.noSourcesMessage.style.display = 'none';
-        this.elements.sourcesList.style.display = 'block';
-
-        filteredSources.forEach(source => {
-            const li = document.createElement('li');
-            li.className = 'source-item';
+        chrome.tabs.query({}, (tabs) => {
+            let filteredTabs = tabs;
             
-            // Add classes based on source state
-            if (source.id === this.audioService.getSelectedSource()?.id) {
-                li.classList.add('selected');
-            }
-            if (source.isAudible) {
-                li.classList.add('has-audio');
-            }
-            if (source.isLocked) {
-                li.classList.add('locked');
-            }
-
-            const favicon = source.favIconUrl ? 
-                `<img src="${source.favIconUrl}" alt="" class="source-icon" />` :
-                '<span class="source-icon">🔊</span>';
-
-            const isSelected = source.id === this.audioService.getSelectedSource()?.id;
-
-            li.innerHTML = `
-                ${favicon}
-                <span class="source-title">${source.title}</span>
-                <div class="source-actions">
-                    <button class="action-button ${source.isLocked ? 'locked' : ''}" 
-                            data-action="lock"
-                            ${!isSelected ? 'disabled' : ''}>
-                        <span class="material-icons-round">${source.isLocked ? 'lock' : 'lock_open'}</span>
-                    </button>
-                </div>
-            `;
-
-            // Source selection
-            li.addEventListener('click', (e) => {
-                const target = e.target as HTMLElement;
-                // Ne pas sélectionner si on clique sur un bouton d'action
-                if (target.closest('.source-actions')) return;
-
-                this.elements.sourcesList.querySelectorAll('.source-item').forEach(item => {
-                    item.classList.remove('selected');
+            // Si la case n'est PAS cochée, on applique le filtre restrictif
+            if (!this.showAllTabs) {
+                filteredTabs = tabs.filter(tab => {
+                    const url = tab.url || '';
+                    return audioSourceDomains.some(domain => url.includes(domain)) || tab.audible;
                 });
-                li.classList.add('selected');
-                this.audioService.selectSource(source.id);
-                this.updateSourcesList(); // Mettre à jour pour activer/désactiver les boutons de lock
-                this.updateStreamingButtonState();
-            });
+            }
 
-            // Lock button
-            const lockButton = li.querySelector('[data-action="lock"]') as HTMLButtonElement;
-            if (lockButton) {
-                lockButton.addEventListener('click', (e) => {
-                    e.stopPropagation(); // Empêcher la sélection de la source
-                    if (isSelected) {
-                        this.audioService.toggleSourceLock(source.id);
+            // Mise à jour de l'affichage selon le filtre actuel
+            if (this.currentFilter === 'with-audio') {
+                filteredTabs = filteredTabs.filter(tab => tab.audible);
+            } else if (this.currentFilter === 'without-audio') {
+                filteredTabs = filteredTabs.filter(tab => !tab.audible);
+            }
+
+            const sourcesList = this.elements.sourcesList;
+            if (!sourcesList) return;
+
+            sourcesList.innerHTML = '';
+            filteredTabs.forEach(tab => {
+                const sourceItem = document.createElement('div');
+                sourceItem.className = 'source-item';
+                if (tab.audible) sourceItem.classList.add('has-audio');
+                if (tab.id === this.audioService.getSelectedSource()?.id) sourceItem.classList.add('selected');
+
+                if (tab.audible) {
+                    const volumeIcon = document.createElement('span');
+                    volumeIcon.className = 'volume-icon';
+                    volumeIcon.innerHTML = '🔊';
+                    sourceItem.appendChild(volumeIcon);
+                }
+
+                const titleSpan = document.createElement('span');
+                titleSpan.textContent = tab.title || 'Sans titre';
+                sourceItem.appendChild(titleSpan);
+
+                sourceItem.addEventListener('click', () => {
+                    if (tab.id) {
+                        this.audioService.selectSource(String(tab.id));
+                        this.updateSourcesList();
+                        this.updateTabDetails(tab);
+                        this.updateStreamingButtonState();
                     }
                 });
-            }
 
-            this.elements.sourcesList.appendChild(li);
+                sourcesList.appendChild(sourceItem);
+            });
+
+            // Mise à jour du message si aucune source
+            const noSourcesMessage = this.elements.noSourcesMessage;
+            if (noSourcesMessage) {
+                noSourcesMessage.style.display = filteredTabs.length === 0 ? 'block' : 'none';
+            }
         });
     }
 
@@ -264,6 +253,22 @@ class Sidebar {
             `;
             this.elements.statusMessage.textContent = 'Streaming stopped';
             this.elements.streamingStatus.classList.remove('streaming-active');
+        }
+    }
+
+    private updateTabDetails(tab: chrome.tabs.Tab) {
+        const detailsContainer = this.elements.tabDetails;
+        const titleElement = this.elements.tabTitle;
+        const urlElement = this.elements.tabUrl;
+
+        if (!detailsContainer || !titleElement || !urlElement) return;
+
+        if (tab) {
+            titleElement.textContent = tab.title || 'Sans titre';
+            urlElement.textContent = tab.url || '';
+            detailsContainer.classList.remove('hidden');
+        } else {
+            detailsContainer.classList.add('hidden');
         }
     }
 }
