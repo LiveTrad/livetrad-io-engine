@@ -4,7 +4,7 @@ const CopyPlugin = require('copy-webpack-plugin');
 module.exports = {
   mode: 'production',
   entry: {
-    sidebar: './src/sidebar/sidebar.ts',
+    sidebar: ['./src/sidebar/sidebar.ts', './src/sidebar/styles.css', './src/sidebar/sidebar.css'],
     background: './src/background/background.ts'
   },
   output: {
@@ -45,10 +45,6 @@ module.exports = {
         {
           from: 'src/sidebar/sidebar.html',
           to: 'sidebar.html'
-        },
-        {
-          from: 'src/sidebar/sidebar.css',
-          to: 'sidebar.css'
         }
       ],
     }),
