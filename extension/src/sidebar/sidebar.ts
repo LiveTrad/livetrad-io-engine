@@ -29,10 +29,7 @@ class Sidebar {
         streamingSection: document.querySelector('.streaming-section') as HTMLElement,
         sourcesContainer: document.querySelector('.sources-container') as HTMLElement,
         filterButtons: document.querySelectorAll('.filter-button') as NodeListOf<HTMLButtonElement>,
-        showAllTabsCheckbox: document.getElementById('showAllTabs') as HTMLInputElement,
-        tabDetails: document.getElementById('tabDetails') as HTMLElement,
-        tabTitle: document.getElementById('tabTitle') as HTMLElement,
-        tabUrl: document.getElementById('tabUrl') as HTMLElement,
+        showAllTabsCheckbox: document.getElementById('showAllTabs') as HTMLInputElement
     };
 
     constructor() {
@@ -179,29 +176,29 @@ class Sidebar {
                     return audioSourceDomains.some(domain => url.includes(domain)) || tab.audible;
                 });
             }
-
+    
             // Mise à jour de l'affichage selon le filtre actuel
             if (this.currentFilter === 'with-audio') {
                 filteredTabs = filteredTabs.filter(tab => tab.audible);
             } else if (this.currentFilter === 'without-audio') {
                 filteredTabs = filteredTabs.filter(tab => !tab.audible);
             }
-
+    
             const sourcesList = this.elements.sourcesList;
             if (!sourcesList) return;
-
+    
             sourcesList.innerHTML = '';
             filteredTabs.forEach(tab => {
                 const sourceItem = document.createElement('div');
                 sourceItem.className = 'source-item';
                 if (tab.audible) sourceItem.classList.add('has-audio');
                 if (tab.id === Number(this.selectedTabId)) sourceItem.classList.add('selected');
-
+    
                 // Ajouter le radio indicator
                 const radioIndicator = document.createElement('span');
                 radioIndicator.className = 'radio-indicator';
                 sourceItem.appendChild(radioIndicator);
-
+    
                 // Favicon ou icône par défaut
                 const favicon = document.createElement('img');
                 favicon.src = tab.favIconUrl || 'default-icon.png';
@@ -210,13 +207,13 @@ class Sidebar {
                     favicon.outerHTML = '<span class="source-icon material-icons-round">tab</span>';
                 };
                 sourceItem.appendChild(favicon);
-
+    
                 // Titre de l'onglet
                 const titleSpan = document.createElement('span');
                 titleSpan.className = 'source-title';
                 titleSpan.textContent = tab.title || 'Sans titre';
                 sourceItem.appendChild(titleSpan);
-
+    
                 // Gestion de la sélection
                 sourceItem.addEventListener('click', () => {
                     if (tab.id) {
@@ -225,7 +222,7 @@ class Sidebar {
                         if (oldSelected) {
                             oldSelected.classList.remove('selected');
                         }
-
+    
                         // Sélectionner le nouveau
                         sourceItem.classList.add('selected');
                         this.selectedTabId = String(tab.id);
@@ -233,10 +230,15 @@ class Sidebar {
                         this.updateStreamingButtonState();
                     }
                 });
-
+    
                 sourcesList.appendChild(sourceItem);
             });
-
+    
+            // Update source count
+            if (this.elements.sourceCount) {
+                this.elements.sourceCount.textContent = `${filteredTabs.length} source${filteredTabs.length !== 1 ? 's' : ''}`;
+            }
+    
             // Mise à jour du message si aucune source
             const noSourcesMessage = this.elements.noSourcesMessage;
             if (noSourcesMessage) {
@@ -286,21 +288,7 @@ class Sidebar {
         }
     }
 
-    private updateTabDetails(tab: chrome.tabs.Tab) {
-        const detailsContainer = this.elements.tabDetails;
-        const titleElement = this.elements.tabTitle;
-        const urlElement = this.elements.tabUrl;
 
-        if (!detailsContainer || !titleElement || !urlElement) return;
-
-        if (tab) {
-            titleElement.textContent = tab.title || 'Sans titre';
-            urlElement.textContent = tab.url || '';
-            detailsContainer.classList.remove('hidden');
-        } else {
-            detailsContainer.classList.add('hidden');
-        }
-    }
 }
 
 // Initialize the sidebar
