@@ -82,8 +82,11 @@ export class WebSocketService extends EventEmitter {
     private handleMessage(ws: WebSocket, data: RawData): void {
         try {
             const message = JSON.parse(data.toString());
+            console.log(`[WebSocket] Received message type: ${message.type}`);
+            
             switch (message.type) {
                 case 'audio_chunk':
+                    console.log('[WebSocket] Received audio chunk');
                     // Convert base64 back to audio data
                     const binaryStr = atob(message.data);
                     const bytes = new Uint8Array(binaryStr.length);
@@ -91,19 +94,66 @@ export class WebSocketService extends EventEmitter {
                         bytes[i] = binaryStr.charCodeAt(i);
                     }
                     const audioData = new Float32Array(bytes.buffer);
+                    console.log(`[WebSocket] Decoded audio chunk: ${audioData.length} samples`);
                     
-                    // Process the audio data
-                    this.processAudioChunk(audioData, message.sampleRate, message.timestamp);
+                    // Process and play the audio data
+                    this.handleAudioChunk(audioData.buffer);
                     break;
                 case 'ping':
                     ws.send(JSON.stringify({ type: 'pong' }));
                     break;
                 default:
-                    console.log('Unknown message type:', message.type);
+                    console.log('[WebSocket] Unknown message type:', message.type);
             }
         } catch (error) {
-            console.error('Error parsing message:', error);
+            console.error('[WebSocket] Error parsing message:', error);
         }
+    }
+
+    private handleAudioChunk(data: ArrayBuffer): void {
+        // Convert ArrayBuffer to Float32Array
+        const audioData = new Float32Array(data);
+        console.log(`[WebSocket] Processing audio chunk of ${audioData.length} samples`);
+        this.audioQueue.push(audioData);
+
+        if (!this.isProcessing) {
+            console.log('[WebSocket] Starting audio queue processing');
+            this.processAudioQueue();
+        }
+    }
+
+    private async processAudioQueue(): Promise<void> {
+        if (!this.audioContext) {
+            console.log('[WebSocket] Creating new AudioContext');
+            this.audioContext = new AudioContext();
+        }
+
+        this.isProcessing = true;
+        console.log(`[WebSocket] Processing audio queue with ${this.audioQueue.length} chunks`);
+
+        while (this.audioQueue.length > 0) {
+            const audioData = this.audioQueue.shift();
+            if (!audioData || !this.audioContext) continue;
+
+            // Create buffer and fill it with the audio data
+            const audioBuffer = this.audioContext.createBuffer(1, this.bufferSize, this.audioContext.sampleRate);
+            audioBuffer.getChannelData(0).set(audioData);
+
+            // Create source and play the buffer
+            const source = this.audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(this.audioContext.destination);
+            source.start();
+
+            console.log(`[WebSocket] Playing audio chunk, buffer size: ${this.bufferSize}, sample rate: ${this.audioContext.sampleRate}`);
+
+            // Wait for the buffer to finish playing
+            const playbackDuration = (this.bufferSize / this.audioContext.sampleRate) * 1000;
+            await new Promise(resolve => setTimeout(resolve, playbackDuration));
+        }
+
+        console.log('[WebSocket] Finished processing audio queue');
+        this.isProcessing = false;
     }
 
     private processAudioChunk(audioData: Float32Array, sampleRate: number, timestamp: number): void {
@@ -132,45 +182,6 @@ export class WebSocketService extends EventEmitter {
 
     public onConnectionChange(callback: (data: { status: boolean, details?: any }) => void): void {
         this.on('connection-change', callback);
-    }
-
-    private handleAudioChunk(data: ArrayBuffer): void {
-        // Convert ArrayBuffer to Float32Array
-        const audioData = new Float32Array(data);
-        this.audioQueue.push(audioData);
-
-        if (!this.isProcessing) {
-            this.processAudioQueue();
-        }
-    }
-
-    private async processAudioQueue(): Promise<void> {
-        if (!this.audioContext) {
-            this.audioContext = new AudioContext();
-        }
-
-        this.isProcessing = true;
-
-        while (this.audioQueue.length > 0) {
-            const audioData = this.audioQueue.shift();
-            if (!audioData || !this.audioContext) continue;
-
-            // Create buffer and fill it with the audio data
-            const audioBuffer = this.audioContext.createBuffer(1, this.bufferSize, this.audioContext.sampleRate);
-            audioBuffer.getChannelData(0).set(audioData);
-
-            // Create source and play the buffer
-            const source = this.audioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(this.audioContext.destination);
-            source.start();
-
-            // Wait for the buffer to finish playing
-            const playbackDuration = (this.bufferSize / this.audioContext.sampleRate) * 1000;
-            await new Promise(resolve => setTimeout(resolve, playbackDuration));
-        }
-
-        this.isProcessing = false;
     }
 
     public close(): void {

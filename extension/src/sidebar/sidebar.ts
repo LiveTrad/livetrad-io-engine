@@ -269,6 +269,7 @@ class Sidebar {
     private toggleStreaming() {
         if (!this.streaming) {
             // Start streaming
+            console.log('[Sidebar] Starting streaming for selected source...');
             this.streaming = true;
             this.elements.startStreamingButton.innerHTML = `
                 <span class="button-icon">⏹️</span>
@@ -276,8 +277,10 @@ class Sidebar {
             `;
             this.elements.statusMessage.textContent = 'Streaming active';
             this.elements.streamingStatus.classList.add('streaming-active');
+            console.log('[Sidebar] Streaming started, UI updated');
         } else {
             // Stop streaming
+            console.log('[Sidebar] Stopping streaming...');
             this.streaming = false;
             this.elements.startStreamingButton.innerHTML = `
                 <span class="button-icon">🎙️</span>
@@ -285,6 +288,7 @@ class Sidebar {
             `;
             this.elements.statusMessage.textContent = 'Streaming stopped';
             this.elements.streamingStatus.classList.remove('streaming-active');
+            console.log('[Sidebar] Streaming stopped, UI updated');
         }
     }
 

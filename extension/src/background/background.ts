@@ -9,6 +9,7 @@ class AudioCaptureManager {
   };
 
   private wsService: WebSocketService;
+  private audioContext: AudioContext | null = null;
 
   constructor() {
     this.wsService = new WebSocketService();
@@ -16,6 +17,22 @@ class AudioCaptureManager {
   }
 
   private initializeListeners(): void {
+    // Listen for tab removal to update streaming state
+    chrome.tabs.onRemoved.addListener((tabId) => {
+      if (this.state.activeTabId === tabId) {
+        this.stopStreaming(tabId);
+      }
+      this.updateAvailableTabs();
+      this.notifyStreamingStateChanged();
+    });
+
+    // Listen for tab audio state changes
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+      if (changeInfo.audible !== undefined) {
+        this.updateAvailableTabs();
+      }
+    });
+
     chrome.runtime.onMessage.addListener((
       message: MessageType,
       _sender,
@@ -29,9 +46,11 @@ class AudioCaptureManager {
           switch (message.type) {
             case 'START_STREAMING':
               response = await this.startStreaming(message.tabId);
+              this.notifyStreamingStateChanged();
               break;
             case 'STOP_STREAMING':
               response = await this.stopStreaming(message.tabId);
+              this.notifyStreamingStateChanged();
               break;
             case 'GET_STREAMING_STATE':
               response = { success: true, state: this.state };
@@ -71,6 +90,7 @@ class AudioCaptureManager {
 
   private async startStreaming(tabId: number): Promise<ResponseType> {
     try {
+      console.log(`[AudioCapture] Starting streaming for tab ${tabId}`);
       if (this.state.isStreaming) {
         throw new Error('Already streaming audio');
       }
@@ -80,41 +100,73 @@ class AudioCaptureManager {
       if (!tab) {
         throw new Error('Tab not found');
       }
+      console.log(`[AudioCapture] Found tab: ${tab.title}`);
 
       // Request tab audio capture
+      console.log('[AudioCapture] Requesting tab audio capture...');
       const stream = await new Promise<MediaStream>((resolve, reject) => {
         chrome.tabCapture.capture({
           audio: true,
           video: false
         }, (stream) => {
           if (chrome.runtime.lastError) {
+            console.error('[AudioCapture] Tab capture error:', chrome.runtime.lastError);
             reject(chrome.runtime.lastError);
           } else if (!stream) {
+            console.error('[AudioCapture] No stream received from tab capture');
             reject(new Error('Failed to capture tab audio'));
           } else {
+            console.log('[AudioCapture] Successfully captured tab audio stream');
             resolve(stream);
           }
         });
       });
 
       if (!stream || stream.getTracks().length === 0) {
+        console.error('[AudioCapture] Stream or tracks are empty');
         throw new Error('Failed to capture tab audio');
       }
+      console.log(`[AudioCapture] Stream has ${stream.getTracks().length} tracks`);
 
-      // Setup audio processing
+      // Setup audio processing with configured values
+      console.log('[AudioCapture] Setting up audio processing...');
       const audioContext = new AudioContext();
       const source = audioContext.createMediaStreamSource(stream);
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      const processor = audioContext.createScriptProcessor(
+        this.wsService.getAudioConfig().bufferSize,
+        this.wsService.getAudioConfig().channels,
+        this.wsService.getAudioConfig().channels
+      );
+      console.log(`[AudioCapture] Created processor with buffer size: ${this.wsService.getAudioConfig().bufferSize}, channels: ${this.wsService.getAudioConfig().channels}`);
 
       // Process audio data
+      let chunkCount = 0;
       processor.onaudioprocess = (e) => {
         const audioData = e.inputBuffer.getChannelData(0);
         const audioArray = new Float32Array(audioData);
         const audioBuffer = audioArray.buffer;
-        this.wsService.sendAudioChunk(audioBuffer);
+        
+        // Log audio data statistics for every chunk
+        let sum = 0;
+        for (let i = 0; i < audioArray.length; i++) {
+          sum += Math.abs(audioArray[i]);
+        }
+        const avgLevel = sum / audioArray.length;
+        console.log(`[AudioCapture] Processing chunk #${chunkCount}, size: ${audioBuffer.byteLength} bytes, avg level: ${avgLevel.toFixed(4)}`);
+        
+        // Log WebSocket send attempt
+        console.log(`[AudioCapture] Attempting to send audio chunk #${chunkCount} via WebSocket`);
+        try {
+          this.wsService.sendAudioChunk(audioBuffer);
+          console.log(`[AudioCapture] Successfully sent audio chunk #${chunkCount}`);
+        } catch (error) {
+          console.error(`[AudioCapture] Failed to send audio chunk #${chunkCount}:`, error);
+        }
+        chunkCount++;
       };
 
       // Connect the audio nodes
+      console.log('[AudioCapture] Connecting audio nodes...');
       source.connect(processor);
       processor.connect(audioContext.destination);
 
@@ -124,10 +176,11 @@ class AudioCaptureManager {
         activeTabId: tabId,
         stream
       };
+      console.log('[AudioCapture] Streaming started successfully');
 
       return { success: true, stream };
     } catch (error) {
-      console.error('Error starting streaming:', error);
+      console.error('[AudioCapture] Error starting streaming:', error);
       return { success: false, error: String(error) };
     }
   }
@@ -139,7 +192,12 @@ class AudioCaptureManager {
       }
 
       if (this.state.stream) {
+        // Stop all tracks and clean up audio context
         this.state.stream.getTracks().forEach(track => track.stop());
+        if (this.audioContext) {
+          this.audioContext.close();
+          this.audioContext = null;
+        }
       }
 
       this.state = {
@@ -157,11 +215,27 @@ class AudioCaptureManager {
 
   private async getAvailableTabs(): Promise<TabInfo[]> {
     const tabs = await chrome.tabs.query({ audible: true });
-    return tabs.map(tab => ({
+    const tabList = tabs.map(tab => ({
       id: tab.id!,
       title: tab.title || 'Unnamed Tab',
       url: tab.url || '',
     }));
+    return tabList;
+  }
+
+  private async updateAvailableTabs(): Promise<void> {
+    const tabs = await this.getAvailableTabs();
+    chrome.runtime.sendMessage({
+      type: 'TABS_UPDATED',
+      tabs: tabs
+    });
+  }
+
+  private notifyStreamingStateChanged(): void {
+    chrome.runtime.sendMessage({
+      type: 'STREAMING_STATE_CHANGED',
+      state: this.state
+    });
   }
 }
 
