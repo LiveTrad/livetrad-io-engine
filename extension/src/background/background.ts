@@ -143,24 +143,41 @@ class AudioCaptureManager {
       let chunkCount = 0;
       processor.onaudioprocess = (e) => {
         const audioData = e.inputBuffer.getChannelData(0);
+        console.log(`[AudioCapture] Raw audio data length: ${audioData.length}`);
+
+        // Check if audio data contains non-zero values
+        let hasSound = false;
+        let maxValue = 0;
+        let minValue = 0;
+        let sum = 0;
+
+        for (let i = 0; i < audioData.length; i++) {
+          const value = audioData[i];
+          if (value !== 0) hasSound = true;
+          maxValue = Math.max(maxValue, value);
+          minValue = Math.min(minValue, value);
+          sum += Math.abs(value);
+        }
+
+        const avgLevel = sum / audioData.length;
+        console.log(`[AudioCapture] Audio data stats - hasSound: ${hasSound}, min: ${minValue}, max: ${maxValue}, avg: ${avgLevel.toFixed(4)}`);
+
+        // Create Float32Array from audio data
         const audioArray = new Float32Array(audioData);
         const audioBuffer = audioArray.buffer;
-        
-        // Log audio data statistics for every chunk
-        let sum = 0;
-        for (let i = 0; i < audioArray.length; i++) {
-          sum += Math.abs(audioArray[i]);
-        }
-        const avgLevel = sum / audioArray.length;
-        console.log(`[AudioCapture] Processing chunk #${chunkCount}, size: ${audioBuffer.byteLength} bytes, avg level: ${avgLevel.toFixed(4)}`);
-        
-        // Log WebSocket send attempt
-        console.log(`[AudioCapture] Attempting to send audio chunk #${chunkCount} via WebSocket`);
-        try {
-          this.wsService.sendAudioChunk(audioBuffer);
-          console.log(`[AudioCapture] Successfully sent audio chunk #${chunkCount}`);
-        } catch (error) {
-          console.error(`[AudioCapture] Failed to send audio chunk #${chunkCount}:`, error);
+        console.log(`[AudioCapture] Created audio buffer, size: ${audioBuffer.byteLength} bytes`);
+
+        // Only send if we actually have sound
+        if (hasSound) {
+          console.log(`[AudioCapture] Attempting to send audio chunk #${chunkCount} via WebSocket`);
+          try {
+            this.wsService.sendAudioChunk(audioBuffer);
+            console.log(`[AudioCapture] Successfully sent audio chunk #${chunkCount}`);
+          } catch (error) {
+            console.error(`[AudioCapture] Failed to send audio chunk #${chunkCount}:`, error);
+          }
+        } else {
+          console.log(`[AudioCapture] Skipping silent audio chunk #${chunkCount}`);
         }
         chunkCount++;
       };

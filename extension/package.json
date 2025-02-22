@@ -1,7 +1,7 @@
 {
-  "name": "tab-audio-capture-extension",
+  "name": "livetrad-extension",
   "version": "1.0.0",
-  "description": "Chrome extension to capture audio from specific tabs",
+  "description": "Real-time audio translation for online meetings",
   "scripts": {
     "build": "webpack --config webpack.config.js",
     "watch": "webpack --config webpack.config.js --watch",

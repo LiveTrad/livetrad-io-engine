@@ -6,7 +6,8 @@
   "permissions": [
     "tabCapture",
     "sidePanel",
-    "storage"
+    "storage",
+    "tabs"
   ],
   "side_panel": {
     "default_path": "sidebar.html"

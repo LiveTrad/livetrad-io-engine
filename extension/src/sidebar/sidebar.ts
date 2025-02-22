@@ -266,29 +266,69 @@ class Sidebar {
         }
     }
 
-    private toggleStreaming() {
+    private async toggleStreaming() {
         if (!this.streaming) {
             // Start streaming
             console.log('[Sidebar] Starting streaming for selected source...');
-            this.streaming = true;
-            this.elements.startStreamingButton.innerHTML = `
-                <span class="button-icon">⏹️</span>
-                Stop Streaming
-            `;
-            this.elements.statusMessage.textContent = 'Streaming active';
-            this.elements.streamingStatus.classList.add('streaming-active');
-            console.log('[Sidebar] Streaming started, UI updated');
+            if (!this.selectedTabId) {
+                console.error('[Sidebar] No tab selected for streaming');
+                return;
+            }
+
+            try {
+                const response = await chrome.runtime.sendMessage({
+                    type: 'START_STREAMING',
+                    tabId: Number(this.selectedTabId)
+                });
+
+                if (response.success) {
+                    this.streaming = true;
+                    this.elements.startStreamingButton.innerHTML = `
+                        <span class="button-icon">⏹️</span>
+                        Stop Streaming
+                    `;
+                    this.elements.statusMessage.textContent = 'Streaming active';
+                    this.elements.streamingStatus.classList.add('streaming-active');
+                    console.log('[Sidebar] Streaming started successfully');
+                } else {
+                    console.error('[Sidebar] Failed to start streaming:', response.error);
+                    this.elements.statusMessage.textContent = 'Failed to start streaming';
+                }
+            } catch (error) {
+                console.error('[Sidebar] Error starting streaming:', error);
+                this.elements.statusMessage.textContent = 'Error starting streaming';
+            }
         } else {
             // Stop streaming
             console.log('[Sidebar] Stopping streaming...');
-            this.streaming = false;
-            this.elements.startStreamingButton.innerHTML = `
-                <span class="button-icon">🎙️</span>
-                Start Streaming
-            `;
-            this.elements.statusMessage.textContent = 'Streaming stopped';
-            this.elements.streamingStatus.classList.remove('streaming-active');
-            console.log('[Sidebar] Streaming stopped, UI updated');
+            if (!this.selectedTabId) {
+                console.error('[Sidebar] No tab selected for streaming');
+                return;
+            }
+
+            try {
+                const response = await chrome.runtime.sendMessage({
+                    type: 'STOP_STREAMING',
+                    tabId: Number(this.selectedTabId)
+                });
+
+                if (response.success) {
+                    this.streaming = false;
+                    this.elements.startStreamingButton.innerHTML = `
+                        <span class="button-icon">🎙️</span>
+                        Start Streaming
+                    `;
+                    this.elements.statusMessage.textContent = 'Streaming stopped';
+                    this.elements.streamingStatus.classList.remove('streaming-active');
+                    console.log('[Sidebar] Streaming stopped successfully');
+                } else {
+                    console.error('[Sidebar] Failed to stop streaming:', response.error);
+                    this.elements.statusMessage.textContent = 'Failed to stop streaming';
+                }
+            } catch (error) {
+                console.error('[Sidebar] Error stopping streaming:', error);
+                this.elements.statusMessage.textContent = 'Error stopping streaming';
+            }
         }
     }
 
