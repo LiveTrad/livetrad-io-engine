@@ -1,15 +1,18 @@
 import { ConnectionState } from '../types';
 import { WebSocketConfig, defaultWebSocketConfig } from '../config/websocket.config';
+import { AudioConfig, defaultAudioConfig } from '../config/audio.config';
 
 export class WebSocketService {
     private ws: WebSocket | null = null;
     private config: WebSocketConfig;
+    private audioConfig: AudioConfig;
     private reconnectAttempts = 0;
     private reconnectTimeout: NodeJS.Timeout | null = null;
     private isVoluntaryDisconnect = false;
 
-    constructor(config: WebSocketConfig = defaultWebSocketConfig) {
+    constructor(config: WebSocketConfig = defaultWebSocketConfig, audioConfig: AudioConfig = defaultAudioConfig) {
         this.config = config;
+        this.audioConfig = audioConfig;
     }
 
     public connect(): Promise<ConnectionState> {
@@ -53,11 +56,24 @@ export class WebSocketService {
         }
     }
 
+    public getAudioConfig(): AudioConfig {
+        return this.audioConfig;
+    }
+
     public sendAudioChunk(chunk: ArrayBuffer): void {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            // Convert ArrayBuffer to Base64 string for safe transmission
+            const audioArray = new Float32Array(chunk);
+            const base64Data = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(audioArray.buffer))))
+            
+            // Send audio data with configured parameters
             this.ws.send(JSON.stringify({
                 type: 'audio_chunk',
-                data: chunk
+                data: base64Data,
+                sampleRate: this.audioConfig.sampleRate,
+                channels: this.audioConfig.channels,
+                bufferSize: this.audioConfig.bufferSize,
+                timestamp: Date.now()
             }));
         }
     }

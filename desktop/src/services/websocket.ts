@@ -74,13 +74,26 @@ export class WebSocketService extends EventEmitter {
         });
     }
 
+    private audioContext: AudioContext | null = null;
+    private audioQueue: Float32Array[] = [];
+    private isProcessing: boolean = false;
+    private bufferSize: number = 4096;
+
     private handleMessage(ws: WebSocket, data: RawData): void {
         try {
             const message = JSON.parse(data.toString());
             switch (message.type) {
-                case 'audio_stream':
-                    // TODO: Handle incoming audio stream
-                    console.log('Received audio chunk:', message.data.length);
+                case 'audio_chunk':
+                    // Convert base64 back to audio data
+                    const binaryStr = atob(message.data);
+                    const bytes = new Uint8Array(binaryStr.length);
+                    for (let i = 0; i < binaryStr.length; i++) {
+                        bytes[i] = binaryStr.charCodeAt(i);
+                    }
+                    const audioData = new Float32Array(bytes.buffer);
+                    
+                    // Process the audio data
+                    this.processAudioChunk(audioData, message.sampleRate, message.timestamp);
                     break;
                 case 'ping':
                     ws.send(JSON.stringify({ type: 'pong' }));
@@ -91,6 +104,20 @@ export class WebSocketService extends EventEmitter {
         } catch (error) {
             console.error('Error parsing message:', error);
         }
+    }
+
+    private processAudioChunk(audioData: Float32Array, sampleRate: number, timestamp: number): void {
+        // Here you can implement audio processing logic
+        // For example: saving to file, real-time playback, or analysis
+        console.log(`Processing audio chunk: ${audioData.length} samples, ${sampleRate}Hz, timestamp: ${timestamp}`);
+        
+        // Example: Calculate audio level
+        let sum = 0;
+        for (let i = 0; i < audioData.length; i++) {
+            sum += Math.abs(audioData[i]);
+        }
+        const averageLevel = sum / audioData.length;
+        console.log(`Average audio level: ${averageLevel}`);
     }
 
     public getConnectionStatus(): { status: boolean, details?: any } {
@@ -107,7 +134,51 @@ export class WebSocketService extends EventEmitter {
         this.on('connection-change', callback);
     }
 
+    private handleAudioChunk(data: ArrayBuffer): void {
+        // Convert ArrayBuffer to Float32Array
+        const audioData = new Float32Array(data);
+        this.audioQueue.push(audioData);
+
+        if (!this.isProcessing) {
+            this.processAudioQueue();
+        }
+    }
+
+    private async processAudioQueue(): Promise<void> {
+        if (!this.audioContext) {
+            this.audioContext = new AudioContext();
+        }
+
+        this.isProcessing = true;
+
+        while (this.audioQueue.length > 0) {
+            const audioData = this.audioQueue.shift();
+            if (!audioData || !this.audioContext) continue;
+
+            // Create buffer and fill it with the audio data
+            const audioBuffer = this.audioContext.createBuffer(1, this.bufferSize, this.audioContext.sampleRate);
+            audioBuffer.getChannelData(0).set(audioData);
+
+            // Create source and play the buffer
+            const source = this.audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(this.audioContext.destination);
+            source.start();
+
+            // Wait for the buffer to finish playing
+            const playbackDuration = (this.bufferSize / this.audioContext.sampleRate) * 1000;
+            await new Promise(resolve => setTimeout(resolve, playbackDuration));
+        }
+
+        this.isProcessing = false;
+    }
+
     public close(): void {
+        if (this.audioContext) {
+            this.audioContext.close();
+            this.audioContext = null;
+        }
+
         if (this.wss) {
             for (const ws of this.connections.keys()) {
                 ws.close();
