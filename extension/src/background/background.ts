@@ -82,16 +82,22 @@ class AudioCaptureManager {
       }
 
       // Request tab audio capture
-      const stream = await new Promise<MediaStream | null>((resolve) => {
+      const stream = await new Promise<MediaStream>((resolve, reject) => {
         chrome.tabCapture.capture({
           audio: true,
           video: false
         }, (stream) => {
-          resolve(stream);
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          } else if (!stream) {
+            reject(new Error('Failed to capture tab audio'));
+          } else {
+            resolve(stream);
+          }
         });
       });
 
-      if (!stream) {
+      if (!stream || stream.getTracks().length === 0) {
         throw new Error('Failed to capture tab audio');
       }
 

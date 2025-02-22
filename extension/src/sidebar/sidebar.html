@@ -11,48 +11,27 @@
 <body>
     <div class="app-container">
         <header class="app-header">
-            <div class="header-content">
+            <div class="header-left">
                 <span class="material-icons-round">translate</span>
-                <!--<img src="../icons/icon-48.png" alt="LiveTrad" class="logo">-->
                 <h1>LiveTrad</h1>
-            </div>
-            <div class="connection-status">
-                <div id="connectionIndicator" class="status-indicator">
+                <div class="connection-pill">
                     <div class="status-dot"></div>
-                    <span id="connectionText" class="status-text">disconnected</span>
+                    <span class="status-text">disconnected</span>
                 </div>
-                <button id="connectButton" class="connect-button">
-                    <span class="material-icons-round">link</span>
-                    <span id="connectButtonText">Connect</span>
-                </button>
             </div>
+            <button id="connectButton" class="connect-button">
+                <span class="material-icons-round">link</span>
+                <span id="connectButtonText">Connect</span>
+            </button>
         </header>
 
         <main class="main-content">
-            <section class="connection-details" id="connectionDetails" style="display: none;">
-                <div class="details-content">
-                    <h3>Connection Details</h3>
-                    <div class="detail-item">
-                        <span class="label">Status:</span>
-                        <span id="detailStatus">-</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="label">Desktop URL:</span>
-                        <span id="detailUrl">-</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="label">Last Event:</span>
-                        <span id="detailLastEvent">-</span>
-                    </div>
+            <div class="filter-section">
+                <div class="show-all-tabs">
+                    <input type="checkbox" id="showAllTabs">
+                    <label for="showAllTabs">Afficher tous les onglets du navigateur</label>
                 </div>
-            </section>
-            <section class="audio-sources-section">
-                <div class="section-header">
-                    <h2>Audio Source</h2>
-                    <span class="source-count" id="sourceCount">0 sources</span>
-                </div>
-
-                <div class="source-filters">
+                <div class="tab-filters">
                     <button class="filter-button active" data-filter="all">
                         <span class="material-icons-round">list</span>
                         Tous
@@ -66,55 +45,35 @@
                         Sans Son
                     </button>
                 </div>
-                
-                <div class="filter-section">
-                    <div class="show-all-tabs">
-                        <input type="checkbox" id="showAllTabs">
-                        <label for="showAllTabs">Afficher tous les onglets du navigateur</label>
-                    </div>
-                </div>
-                
-                <div class="sources-container">
-                    <div class="audio-sources">
-                        <div id="noSourcesMessage" class="no-sources-message">
-                            <i class="info-icon">ℹ</i>
-                            <p>No potential audio sources found</p>
-                        </div>
-                        <ul id="sourcesList" class="sources-list">
-                            <!-- Sources will be added here dynamically -->
-                        </ul>
-                    </div>
-                </div>
-            </section>
-
-            <div id="tabDetails" class="tab-details hidden">
-                <h3>Détails de l'onglet</h3>
-                <div class="detail-item">
-                    <span>Titre:</span>
-                    <span id="tabTitle"></span>
-                </div>
-                <div class="detail-item">
-                    <span>URL:</span>
-                    <span id="tabUrl"></span>
-                </div>
             </div>
 
-            <section class="streaming-section">
-                <div class="streaming-controls">
-                    <button id="startStreamingButton" class="stream-button" disabled>
-                        <span class="button-icon">🎙️</span>
-                        Start Streaming
-                    </button>
+            <div class="sources-container">
+                <div id="noSourcesMessage" class="no-sources-message">
+                    <i class="info-icon">ℹ</i>
+                    <span>No potential audio sources found</span>
+                    <p class="help-text">Open a meeting tab (Meet, Zoom, Teams...) to see it here</p>
                 </div>
-
-                <div id="streamingStatus" class="streaming-status">
-                    <div class="status-message">
-                        <span class="status-icon">⏸️</span>
-                        <span id="statusMessage">Streaming inactive</span>
-                    </div>
+                <div id="sourcesList" class="sources-list">
+                    <!-- Sources will be added here dynamically -->
                 </div>
-            </section>
+            </div>
         </main>
+
+        <section class="streaming-section">
+            <div class="streaming-controls">
+                <button id="startStreamingButton" class="stream-button" disabled>
+                    <span class="button-icon">🎙️</span>
+                    Start Streaming
+                </button>
+            </div>
+
+            <div id="streamingStatus" class="streaming-status">
+                <div class="status-message">
+                    <span class="status-icon">⏸️</span>
+                    <span id="statusMessage">Streaming inactive</span>
+                </div>
+            </div>
+        </section>
     </div>
     <script src="sidebar.js"></script>
 </body>

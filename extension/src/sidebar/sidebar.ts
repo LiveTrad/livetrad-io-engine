@@ -13,6 +13,7 @@ class Sidebar {
     private currentFilter: FilterType = 'all';
     private currentSources: AudioSource[] = [];
     private showAllTabs: boolean = defaultConfig.showAllTabs;
+    private selectedTabId: string | null = null;
 
     private elements = {
         connectButton: document.getElementById('connectButton') as HTMLButtonElement,
@@ -127,21 +128,33 @@ class Sidebar {
     }
 
     private async handleConnectionClick() {
-        try {
-            const currentState = this.wsService.getConnectionState();
-            if (currentState.status === 'connected') {
-                this.wsService.disconnect();
-                this.updateConnectionStatus(this.wsService.getConnectionState());
-            } else {
+        const button = this.elements.connectButton;
+        const currentState = this.wsService.getConnectionState();
+
+        if (currentState.status === 'connected') {
+            // Déconnexion
+            button.classList.add('disconnecting');
+            this.elements.connectButtonText.textContent = 'Disconnecting...';
+            this.wsService.disconnect();
+            this.updateConnectionStatus(this.wsService.getConnectionState());
+            button.classList.remove('disconnecting');
+        } else {
+            // Connexion
+            button.classList.add('connecting');
+            this.elements.connectButtonText.textContent = 'Connecting...';
+            
+            try {
                 const newState = await this.wsService.connect();
                 this.updateConnectionStatus(newState);
+            } catch (error) {
+                console.error('Connection error:', error);
+                this.updateConnectionStatus({
+                    status: 'disconnected',
+                    desktopUrl: this.wsService.getConnectionState().desktopUrl
+                });
             }
-        } catch (error) {
-            console.error('Connection error:', error);
-            this.updateConnectionStatus({
-                status: 'disconnected',
-                desktopUrl: this.wsService.getConnectionState().desktopUrl
-            });
+            
+            button.classList.remove('connecting');
         }
     }
 
@@ -182,24 +195,41 @@ class Sidebar {
                 const sourceItem = document.createElement('div');
                 sourceItem.className = 'source-item';
                 if (tab.audible) sourceItem.classList.add('has-audio');
-                if (tab.id === this.audioService.getSelectedSource()?.id) sourceItem.classList.add('selected');
+                if (tab.id === Number(this.selectedTabId)) sourceItem.classList.add('selected');
 
-                if (tab.audible) {
-                    const volumeIcon = document.createElement('span');
-                    volumeIcon.className = 'volume-icon';
-                    volumeIcon.innerHTML = '🔊';
-                    sourceItem.appendChild(volumeIcon);
-                }
+                // Ajouter le radio indicator
+                const radioIndicator = document.createElement('span');
+                radioIndicator.className = 'radio-indicator';
+                sourceItem.appendChild(radioIndicator);
 
+                // Favicon ou icône par défaut
+                const favicon = document.createElement('img');
+                favicon.src = tab.favIconUrl || 'default-icon.png';
+                favicon.className = 'source-icon';
+                favicon.onerror = () => {
+                    favicon.outerHTML = '<span class="source-icon material-icons-round">tab</span>';
+                };
+                sourceItem.appendChild(favicon);
+
+                // Titre de l'onglet
                 const titleSpan = document.createElement('span');
+                titleSpan.className = 'source-title';
                 titleSpan.textContent = tab.title || 'Sans titre';
                 sourceItem.appendChild(titleSpan);
 
+                // Gestion de la sélection
                 sourceItem.addEventListener('click', () => {
                     if (tab.id) {
+                        // Désélectionner l'ancien
+                        const oldSelected = sourcesList.querySelector('.selected');
+                        if (oldSelected) {
+                            oldSelected.classList.remove('selected');
+                        }
+
+                        // Sélectionner le nouveau
+                        sourceItem.classList.add('selected');
+                        this.selectedTabId = String(tab.id);
                         this.audioService.selectSource(String(tab.id));
-                        this.updateSourcesList();
-                        this.updateTabDetails(tab);
                         this.updateStreamingButtonState();
                     }
                 });
