@@ -102,16 +102,28 @@ body {
   padding: 6px 12px;
   border: none;
   border-radius: 4px;
-  background-color: #4a90e2;
+  background-color: var(--primary);
   color: white;
   cursor: pointer;
   font-size: 12px;
-  transition: background-color 0.2s;
+  transition: all 0.2s var(--smooth);
   margin-left: 16px;
 }
 
 .connect-button:hover {
-  background-color: #357abd;
+  background-color: var(--primary-dark);
+  transform: translateY(-1px);
+}
+
+.connect-button.connecting {
+  background-color: #9ca3af;
+  cursor: wait;
+  transform: none;
+}
+
+.connect-button.connecting:hover {
+  background-color: #9ca3af;
+  transform: none;
 }
 
 .connect-button.disconnecting {
@@ -120,10 +132,7 @@ body {
 
 .connect-button.disconnecting:hover {
   background-color: var(--danger-dark);
-}
-
-.connect-button.connecting {
-  background-color: #f39c12;
+  transform: translateY(-1px);
 }
 
 .connection-details {
@@ -580,10 +589,13 @@ h2 {
   bottom: 0;
   left: 0;
   right: 0;
-  background: white;
+  background: var(--bg-secondary);
   padding: 16px;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-lg);
   z-index: 100;
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 /* Quand la liste déborde, fixer la section streaming en bas */
@@ -602,24 +614,24 @@ h2 {
 
 /* Streaming Controls */
 .streaming-controls {
-  margin-top: 16px;
+  margin-top: 8px;
   text-align: center;
 }
 
 .stream-button {
-  background: #5b6bff;
+  background: var(--primary);
   color: white;
   border: none;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  transition: all 0.2s;
+  transition: all 0.2s var(--smooth);
 }
 
 .stream-button:disabled {
