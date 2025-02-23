@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { AudioSource } from '../types';
+import { audioSourceDomains } from '@/config/audio.config';
 
 export class AudioService extends EventEmitter {
     private selectedSourceId: string | null = null;
@@ -90,25 +91,6 @@ export class AudioService extends EventEmitter {
 
     private isPotentialAudioSource(url?: string): boolean {
         if (!url) return false;
-        
-        // Liste des domaines qui sont potentiellement des sources audio
-        const audioSourceDomains = [
-            'meet.google.com',
-            'zoom.us',
-            'teams.microsoft.com',
-            'youtube.com',
-            'youtu.be',
-            'vimeo.com',
-            'dailymotion.com',
-            'twitch.tv',
-            'spotify.com',
-            'deezer.com',
-            'soundcloud.com',
-            'discord.com',
-            'slack.com',
-            'webex.com',
-            'gotomeeting.com'
-        ];
         
         try {
             const urlObj = new URL(url);

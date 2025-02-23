@@ -10,6 +10,7 @@ export const defaultAudioConfig: AudioConfig = {
   bufferSize: 4096
 };
 
+// Liste des domaines qui sont potentiellement des sources audio
 export const audioSourceDomains = [
     'meet.google.com',
     'zoom.us',
