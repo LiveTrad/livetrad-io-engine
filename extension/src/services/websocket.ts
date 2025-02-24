@@ -61,8 +61,20 @@ export class WebSocketService {
     }
 
     public sendAudioChunk(chunk: ArrayBuffer): void {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            console.error('[WebSocket] Cannot send audio chunk: connection not open');
+        if (!this.ws) {
+            console.error('[WebSocket] Cannot send audio chunk: no WebSocket instance');
+            throw new Error('WebSocket not initialized');
+        }
+
+        if (this.ws.readyState !== WebSocket.OPEN) {
+            console.error('[WebSocket] Cannot send audio chunk: connection not open (State:', this.ws.readyState, ')');
+            // Attempt to reconnect if not already connecting
+            if (this.ws.readyState !== WebSocket.CONNECTING && !this.isVoluntaryDisconnect) {
+                console.log('[WebSocket] Attempting to reconnect...');
+                this.connect().catch(error => {
+                    console.error('[WebSocket] Reconnection failed:', error);
+                });
+            }
             throw new Error('WebSocket connection not open');
         }
 
@@ -104,8 +116,14 @@ export class WebSocketService {
 
     private handleDisconnect(): void {
         if (this.isVoluntaryDisconnect) {
-            console.log('Voluntary disconnect - not attempting to reconnect');
+            console.log('[WebSocket] Voluntary disconnect - not attempting to reconnect');
             return;
+        }
+
+        // Clear any existing reconnect timeout
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
         }
 
         if (this.reconnectAttempts < this.config.maxReconnectAttempts) {

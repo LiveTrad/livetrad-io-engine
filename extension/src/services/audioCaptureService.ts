@@ -26,6 +26,23 @@ export class AudioCaptureService {
         throw new Error('Already streaming audio');
       }
 
+      // Check if we can capture this tab
+      if (!stream) {
+        console.error('[AudioCapture] No stream provided');
+        throw new Error('No stream provided');
+      }
+
+      // Ensure WebSocket connection is established and maintained
+      if (!this.wsService || this.wsService.getConnectionState().status !== 'connected') {
+        console.log('[AudioCapture] WebSocket not connected, attempting to connect...');
+        try {
+          await this.wsService.connect();
+        } catch (wsError) {
+          console.error('[AudioCapture] Failed to establish WebSocket connection:', wsError);
+          throw new Error('Failed to establish WebSocket connection. Please ensure you are connected before starting streaming.');
+        }
+      }
+
       console.log('[AudioCapture] Validating audio stream...');
       if (!stream || stream.getTracks().length === 0) {
         console.error('[AudioCapture] Stream or tracks are empty');
@@ -118,15 +135,24 @@ export class AudioCaptureService {
           chunkCount = 0;
         }
 
-        // Only send if we actually have sound
+        // Send audio data if we have sound and connection is active
         if (hasSound) {
-          console.log('[AudioCapture] Sending audio chunk:', {
-            size: audioData.length,
-            maxAmplitude: maxValue.toFixed(4),
-            avgAmplitude: avgAmplitude.toFixed(4)
-          });
-          const audioArray = new Float32Array(audioData);
-          this.wsService.sendAudioChunk(audioArray.buffer);
+          try {
+            if (this.wsService.getConnectionState().status === 'connected') {
+              console.log('[AudioCapture] Sending audio chunk:', {
+                size: audioData.length,
+                maxAmplitude: maxValue.toFixed(4),
+                avgAmplitude: avgAmplitude.toFixed(4)
+              });
+              const audioArray = new Float32Array(audioData);
+              this.wsService.sendAudioChunk(audioArray.buffer);
+            } else {
+              console.warn('[AudioCapture] Cannot send audio chunk: WebSocket not connected');
+            }
+          } catch (error) {
+            console.error('[AudioCapture] Error sending audio chunk:', error);
+            // Don't throw here to keep the audio processing running
+          }
         }
         chunkCount++;
       };

@@ -274,6 +274,13 @@ class Sidebar {
         if (!this.selectedTabId) return;
 
         try {
+            // Check if we're trying to capture a Chrome page
+            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            const currentTab = tabs[0];
+            if (currentTab && currentTab.url && currentTab.url.startsWith('chrome://')) {
+                throw new Error('Chrome pages cannot be captured due to security restrictions. Please select a different tab.');
+            }
+
             if (this.streaming) {
                 // Stop streaming
                 const response = await this.audioCaptureService.stopStreaming(Number(this.selectedTabId));
@@ -287,6 +294,7 @@ class Sidebar {
                 `;
                 this.elements.statusMessage.textContent = 'Streaming stopped';
                 this.elements.streamingStatus.classList.remove('streaming-active');
+                this.streaming = false;
             } else {
                 // Capture tab audio
                 const stream = await new Promise<MediaStream>((resolve, reject) => {
