@@ -170,7 +170,7 @@ class Sidebar {
     }
 
     private updateSourcesList() {
-        chrome.tabs.query({}, (tabs) => {
+        chrome.tabs.query({}, async (tabs) => {
             let filteredTabs = tabs;
             
             // Si la case n'est PAS cochée, on applique le filtre restrictif
@@ -197,6 +197,11 @@ class Sidebar {
                 sourceItem.className = 'source-item';
                 if (tab.audible) sourceItem.classList.add('has-audio');
                 if (tab.id === Number(this.selectedTabId)) sourceItem.classList.add('selected');
+                
+                // Disable selection if streaming is active and this is not the current streaming source
+                if (this.streaming && tab.id !== Number(this.selectedTabId)) {
+                    sourceItem.classList.add('disabled');
+                }
     
                 // Ajouter le radio indicator
                 const radioIndicator = document.createElement('span');
@@ -219,20 +224,26 @@ class Sidebar {
                 sourceItem.appendChild(titleSpan);
     
                 // Gestion de la sélection
-                sourceItem.addEventListener('click', () => {
-                    if (tab.id) {
-                        // Désélectionner l'ancien
-                        const oldSelected = sourcesList.querySelector('.selected');
-                        if (oldSelected) {
-                            oldSelected.classList.remove('selected');
-                        }
-    
-                        // Sélectionner le nouveau
-                        sourceItem.classList.add('selected');
-                        this.selectedTabId = String(tab.id);
-                        this.audioService.selectSource(String(tab.id));
-                        this.updateStreamingButtonState();
+                sourceItem.addEventListener('click', async () => {
+                    if (!tab.id) return;
+
+                    // If streaming is active and trying to select a different source
+                    if (this.streaming && tab.id !== Number(this.selectedTabId)) {
+                        this.elements.statusMessage.textContent = 'Please stop the current stream before selecting a new source';
+                        return;
                     }
+
+                    // Désélectionner l'ancien
+                    const oldSelected = sourcesList.querySelector('.selected');
+                    if (oldSelected) {
+                        oldSelected.classList.remove('selected');
+                    }
+
+                    // Sélectionner le nouveau
+                    sourceItem.classList.add('selected');
+                    this.selectedTabId = String(tab.id);
+                    this.audioService.selectSource(String(tab.id));
+                    this.updateStreamingButtonState();
                 });
     
                 sourcesList.appendChild(sourceItem);
@@ -251,7 +262,7 @@ class Sidebar {
         });
     }
 
-    private updateStreamingButtonState() {
+    private async updateStreamingButtonState() {
         const selectedSource = this.audioService.getSelectedSource();
         console.log("Selected Source is : ", selectedSource);
         const canStream = this.wsService.getConnectionState().status === 'connected' 
@@ -269,8 +280,18 @@ class Sidebar {
                 'Connect to start streaming' : 
                 'Select a source and connect to start streaming';
             this.elements.streamingStatus.classList.remove('streaming-active');
-        }
-    }
+        } else if (this.streaming && this.selectedTabId) {
+            // Get the current streaming tab's title
+            try {
+                const streamingTab = await chrome.tabs.get(Number(this.selectedTabId));
+                this.elements.startStreamingButton.innerHTML = `
+                    <span class="button-icon">⏹️</span>
+                    Stop Streaming (${streamingTab.title || 'Unknown'})
+                `;
+            } catch (error) {
+                console.error('Error getting streaming tab info:', error);
+            }
+    }}
 
     private async toggleStreaming() {
         if (!this.selectedTabId) return;
@@ -299,15 +320,36 @@ class Sidebar {
                 this.elements.statusMessage.textContent = 'Streaming stopped';
                 this.elements.streamingStatus.classList.remove('streaming-active');
             } else {
-                // Request tab capture permission first
-                try {
-                    await chrome.tabs.update(Number(this.selectedTabId), { active: true });
-                    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay to ensure tab activation
-                } catch (error) {
-                    console.warn('Failed to activate tab:', error);
+                // Get the selected tab information
+                const selectedTab = await chrome.tabs.get(Number(this.selectedTabId));
+                
+                // Check if the selected tab is loaded
+                if (!selectedTab.url || selectedTab.status !== 'complete') {
+                    throw new Error('Please wait for the tab to finish loading before capturing audio.');
                 }
 
-                // Capture tab audio
+                // Check if we're trying to capture a restricted URL
+                if (restrictedUrls.some(prefix => selectedTab.url?.startsWith(prefix))) {
+                    throw new Error('This page cannot be captured due to browser security restrictions. Please select a different tab.');
+                }
+
+                // Inform user about tab switching
+                const activeTab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+                if (selectedTab.id !== activeTab.id) {
+                    this.elements.statusMessage.textContent = 'Switching to the selected tab (required for audio capture)...';
+                }
+
+                // Activate the tab and wait for it to be ready
+                try {
+                    await chrome.tabs.update(Number(this.selectedTabId), { active: true });
+                    // Wait for the tab to be fully activated
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                } catch (error) {
+                    console.warn('Failed to activate tab:', error);
+                    throw new Error('Failed to activate the selected tab. Please try again.');
+                }
+
+                // Request tab capture permission
                 const stream = await new Promise<MediaStream>((resolve, reject) => {
                     chrome.tabCapture.capture(
                         { 
@@ -323,7 +365,7 @@ class Sidebar {
                             if (chrome.runtime.lastError) {
                                 reject(new Error(chrome.runtime.lastError.message));
                             } else if (!stream) {
-                                reject(new Error('Failed to capture tab audio. Please ensure you have granted the necessary permissions.'));
+                                reject(new Error('Failed to capture tab audio. Please ensure you have granted the necessary permissions and the tab is active.'));
                             } else {
                                 resolve(stream);
                             }
