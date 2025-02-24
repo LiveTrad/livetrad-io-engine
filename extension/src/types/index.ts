@@ -29,6 +29,7 @@ export interface ConnectionState {
 export type MessageType = {
   type: 'START_STREAMING';
   tabId: number;
+  stream: MediaStream;
 } | {
   type: 'STOP_STREAMING';
   tabId: number;

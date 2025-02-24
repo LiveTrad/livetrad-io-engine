@@ -1,5 +1,6 @@
 import { WebSocketService } from '../services/websocket';
 import { AudioService } from '../services/audio';
+import { AudioCaptureService } from '../services/audioCaptureService';
 import { defaultWebSocketConfig } from '../config/websocket.config';
 import { ConnectionState, AudioSource } from '../types';
 import { defaultConfig, audioSourceDomains } from '../config/audio.config';
@@ -32,6 +33,8 @@ class Sidebar {
         showAllTabsCheckbox: document.getElementById('showAllTabs') as HTMLInputElement
     };
 
+    private audioCaptureService: AudioCaptureService;
+
     constructor() {
         // Vérifier que tous les éléments sont trouvés
         for (const [key, element] of Object.entries(this.elements)) {
@@ -42,6 +45,7 @@ class Sidebar {
 
         this.wsService = new WebSocketService(defaultWebSocketConfig);
         this.audioService = new AudioService();
+        this.audioCaptureService = new AudioCaptureService();
         this.initializeEventListeners();
         this.initializeIntersectionObserver();
 
@@ -267,68 +271,63 @@ class Sidebar {
     }
 
     private async toggleStreaming() {
-        if (!this.streaming) {
-            // Start streaming
-            console.log('[Sidebar] Starting streaming for selected source...');
-            if (!this.selectedTabId) {
-                console.error('[Sidebar] No tab selected for streaming');
-                return;
-            }
+        if (!this.selectedTabId) return;
 
-            try {
-                const response = await chrome.runtime.sendMessage({
-                    type: 'START_STREAMING',
-                    tabId: Number(this.selectedTabId)
+        try {
+            if (this.streaming) {
+                // Stop streaming
+                const response = await this.audioCaptureService.stopStreaming(Number(this.selectedTabId));
+                if (!response.success) {
+                    throw new Error(response.error);
+                }
+                this.streaming = false;
+                this.elements.startStreamingButton.innerHTML = `
+                    <span class="button-icon">🎙️</span>
+                    Start Streaming
+                `;
+                this.elements.statusMessage.textContent = 'Streaming stopped';
+                this.elements.streamingStatus.classList.remove('streaming-active');
+            } else {
+                // Capture tab audio
+                const stream = await new Promise<MediaStream>((resolve, reject) => {
+                    chrome.tabCapture.capture(
+                        { 
+                            audio: true,
+                            video: false,
+                            audioConstraints: {
+                                mandatory: {
+                                    chromeMediaSource: 'tab'
+                                }
+                            }
+                        },
+                        (stream) => {
+                            if (chrome.runtime.lastError) {
+                                reject(new Error(chrome.runtime.lastError.message));
+                            } else if (!stream) {
+                                reject(new Error('Failed to capture tab audio'));
+                            } else {
+                                resolve(stream);
+                            }
+                        }
+                    );
                 });
 
-                if (response.success) {
-                    this.streaming = true;
-                    this.elements.startStreamingButton.innerHTML = `
-                        <span class="button-icon">⏹️</span>
-                        Stop Streaming
-                    `;
-                    this.elements.statusMessage.textContent = 'Streaming active';
-                    this.elements.streamingStatus.classList.add('streaming-active');
-                    console.log('[Sidebar] Streaming started successfully');
-                } else {
-                    console.error('[Sidebar] Failed to start streaming:', response.error);
-                    this.elements.statusMessage.textContent = 'Failed to start streaming';
+                // Start streaming
+                const response = await this.audioCaptureService.startStreaming(stream, Number(this.selectedTabId));
+                if (!response.success) {
+                    throw new Error(response.error);
                 }
-            } catch (error) {
-                console.error('[Sidebar] Error starting streaming:', error);
-                this.elements.statusMessage.textContent = 'Error starting streaming';
+                this.streaming = true;
+                this.elements.startStreamingButton.innerHTML = `
+                    <span class="button-icon">⏹️</span>
+                    Stop Streaming
+                `;
+                this.elements.statusMessage.textContent = 'Streaming active';
+                this.elements.streamingStatus.classList.add('streaming-active');
             }
-        } else {
-            // Stop streaming
-            console.log('[Sidebar] Stopping streaming...');
-            if (!this.selectedTabId) {
-                console.error('[Sidebar] No tab selected for streaming');
-                return;
-            }
-
-            try {
-                const response = await chrome.runtime.sendMessage({
-                    type: 'STOP_STREAMING',
-                    tabId: Number(this.selectedTabId)
-                });
-
-                if (response.success) {
-                    this.streaming = false;
-                    this.elements.startStreamingButton.innerHTML = `
-                        <span class="button-icon">🎙️</span>
-                        Start Streaming
-                    `;
-                    this.elements.statusMessage.textContent = 'Streaming stopped';
-                    this.elements.streamingStatus.classList.remove('streaming-active');
-                    console.log('[Sidebar] Streaming stopped successfully');
-                } else {
-                    console.error('[Sidebar] Failed to stop streaming:', response.error);
-                    this.elements.statusMessage.textContent = 'Failed to stop streaming';
-                }
-            } catch (error) {
-                console.error('[Sidebar] Error stopping streaming:', error);
-                this.elements.statusMessage.textContent = 'Error stopping streaming';
-            }
+        } catch (error) {
+            console.error('Streaming error:', error);
+            this.elements.statusMessage.textContent = `Failed to ${this.streaming ? 'stop' : 'start'} streaming: ${error}`;
         }
     }
 
