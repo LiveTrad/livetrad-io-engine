@@ -31,5 +31,6 @@ export const audioSourceDomains = [
 
 export const defaultConfig = {
     ...defaultAudioConfig,
-    showAllTabs: false // Option pour afficher tous les onglets ou seulement les sources potentielles
-};
+    showAllTabs: false, // Option pour afficher tous les onglets ou seulement les sources potentielles
+    streamAllTabs: true  // Par défaut, tous les onglets sont streamables
+  };

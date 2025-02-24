@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { AudioSource } from '../types';
-import { audioSourceDomains } from '@/config/audio.config';
+import { audioSourceDomains, defaultAudioConfig, defaultConfig } from '@/config/audio.config';
 
 export class AudioService extends EventEmitter {
     private selectedSourceId: string | null = null;
@@ -44,7 +44,9 @@ export class AudioService extends EventEmitter {
                 // Get the current source if it exists
                 const existingSource = this.knownSources.get(tabId);
                 
-                if (isPotentialSource) {
+                const canStream = defaultConfig.streamAllTabs || isPotentialSource;
+
+                if (canStream) {
                     // Update or create the source
                     const newSource: AudioSource = {
                         id: tabId,

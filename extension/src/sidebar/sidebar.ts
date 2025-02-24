@@ -253,6 +253,7 @@ class Sidebar {
 
     private updateStreamingButtonState() {
         const selectedSource = this.audioService.getSelectedSource();
+        console.log("Selected Source is : ", selectedSource);
         const canStream = this.wsService.getConnectionState().status === 'connected' 
             && selectedSource !== null;
 
