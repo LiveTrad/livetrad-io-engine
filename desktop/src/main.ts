@@ -20,11 +20,22 @@ class LiveTradApp {
         });
 
         // Listen for WebSocket connection changes
-        this.wsService.onConnectionChange((status) => {
-            if (this.mainWindow.getWindow()) {
-                this.mainWindow.getWindow()!.webContents.send('connection-change', status);
-            }
-        });
+        // this.wsService.onConnectionChange((status) => {
+        //     if (this.mainWindow.getWindow()) {
+        //         this.mainWindow.getWindow()!.webContents.send('connection-change', status);
+        //     }
+        // });
+
+
+  
+  // Make sure to forward WebSocketService events to the renderer
+  this.wsService.onConnectionChange((data) => {
+    this.mainWindow.getWindow()!.webContents.send('connection-change', data);
+  });
+  
+  this.wsService.onAudioStats((stats) => {
+    this.mainWindow.getWindow()!.webContents.send('audio-stats', stats);
+  });
     }
 
     private initApp(): void {

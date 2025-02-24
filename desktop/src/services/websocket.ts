@@ -74,10 +74,9 @@ export class WebSocketService extends EventEmitter {
         });
     }
 
-    private audioContext: AudioContext | null = null;
-    private audioQueue: Float32Array[] = [];
-    private isProcessing: boolean = false;
     private bufferSize: number = 4096;
+    private totalChunksReceived: number = 0;
+    private lastAudioStats: any = null;
 
     private handleMessage(ws: WebSocket, data: RawData): void {
         try {
@@ -96,8 +95,39 @@ export class WebSocketService extends EventEmitter {
                     const audioData = new Float32Array(bytes.buffer);
                     console.log(`[WebSocket] Decoded audio chunk: ${audioData.length} samples`);
                     
-                    // Process and play the audio data
-                    this.handleAudioChunk(audioData.buffer);
+                    // Calculate audio statistics
+                    let maxValue = -Infinity;
+                    let minValue = Infinity;
+                    let sum = 0;
+                    let hasSound = false;
+
+                    for (let i = 0; i < audioData.length; i++) {
+                        const value = audioData[i];
+                        maxValue = Math.max(maxValue, value);
+                        minValue = Math.min(minValue, value);
+                        sum += Math.abs(value);
+                        if (Math.abs(value) > 0.01) hasSound = true;
+                    }
+
+                    const avgValue = sum / audioData.length;
+
+                    // Update audio stats
+                    this.totalChunksReceived++;
+                    this.lastAudioStats = {
+                        chunkCount: this.totalChunksReceived,
+                        bufferSize: message.bufferSize,
+                        hasSound,
+                        maxValue: maxValue.toFixed(4),
+                        minValue: minValue.toFixed(4),
+                        avgValue: avgValue.toFixed(4),
+                        timestamp: new Date().toISOString()
+                    };
+
+                    // Emit audio stats for UI updates
+                    this.emit('audio-stats', this.lastAudioStats);
+
+                    // Log detailed stats to console
+                    console.log('[WebSocket] Audio chunk stats:', this.lastAudioStats);
                     break;
                 case 'ping':
                     ws.send(JSON.stringify({ type: 'pong' }));
@@ -110,64 +140,12 @@ export class WebSocketService extends EventEmitter {
         }
     }
 
-    private handleAudioChunk(data: ArrayBuffer): void {
-        // Convert ArrayBuffer to Float32Array
-        const audioData = new Float32Array(data);
-        console.log(`[WebSocket] Processing audio chunk of ${audioData.length} samples`);
-        this.audioQueue.push(audioData);
-
-        if (!this.isProcessing) {
-            console.log('[WebSocket] Starting audio queue processing');
-            this.processAudioQueue();
-        }
+    public getLastAudioStats(): any {
+        return this.lastAudioStats;
     }
 
-    private async processAudioQueue(): Promise<void> {
-        if (!this.audioContext) {
-            console.log('[WebSocket] Creating new AudioContext');
-            this.audioContext = new AudioContext();
-        }
-
-        this.isProcessing = true;
-        console.log(`[WebSocket] Processing audio queue with ${this.audioQueue.length} chunks`);
-
-        while (this.audioQueue.length > 0) {
-            const audioData = this.audioQueue.shift();
-            if (!audioData || !this.audioContext) continue;
-
-            // Create buffer and fill it with the audio data
-            const audioBuffer = this.audioContext.createBuffer(1, this.bufferSize, this.audioContext.sampleRate);
-            audioBuffer.getChannelData(0).set(audioData);
-
-            // Create source and play the buffer
-            const source = this.audioContext.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(this.audioContext.destination);
-            source.start();
-
-            console.log(`[WebSocket] Playing audio chunk, buffer size: ${this.bufferSize}, sample rate: ${this.audioContext.sampleRate}`);
-
-            // Wait for the buffer to finish playing
-            const playbackDuration = (this.bufferSize / this.audioContext.sampleRate) * 1000;
-            await new Promise(resolve => setTimeout(resolve, playbackDuration));
-        }
-
-        console.log('[WebSocket] Finished processing audio queue');
-        this.isProcessing = false;
-    }
-
-    private processAudioChunk(audioData: Float32Array, sampleRate: number, timestamp: number): void {
-        // Here you can implement audio processing logic
-        // For example: saving to file, real-time playback, or analysis
-        console.log(`Processing audio chunk: ${audioData.length} samples, ${sampleRate}Hz, timestamp: ${timestamp}`);
-        
-        // Example: Calculate audio level
-        let sum = 0;
-        for (let i = 0; i < audioData.length; i++) {
-            sum += Math.abs(audioData[i]);
-        }
-        const averageLevel = sum / audioData.length;
-        console.log(`Average audio level: ${averageLevel}`);
+    public onAudioStats(callback: (stats: any) => void): void {
+        this.on('audio-stats', callback);
     }
 
     public getConnectionStatus(): { status: boolean, details?: any } {
@@ -185,10 +163,10 @@ export class WebSocketService extends EventEmitter {
     }
 
     public close(): void {
-        if (this.audioContext) {
-            this.audioContext.close();
-            this.audioContext = null;
-        }
+        // if (this.audioContext) {
+        //     this.audioContext.close();
+        //     this.audioContext = null;
+        // }
 
         if (this.wss) {
             for (const ws of this.connections.keys()) {
@@ -197,7 +175,7 @@ export class WebSocketService extends EventEmitter {
             this.connections.clear();
             this.wss.close();
             this.wss = null;
-            this.emit('connection-change', { status: false });
+            this.emit('connection-change');
         }
     }
 }
