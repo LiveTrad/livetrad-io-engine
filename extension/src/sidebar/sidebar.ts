@@ -256,6 +256,7 @@ class Sidebar {
         const canStream = this.wsService.getConnectionState().status === 'connected' 
             && selectedSource !== null;
 
+        // Enable streaming for any selected source when connected
         this.elements.startStreamingButton.disabled = !canStream;
         
         if (!canStream) {
@@ -274,11 +275,13 @@ class Sidebar {
         if (!this.selectedTabId) return;
 
         try {
-            // Check if we're trying to capture a Chrome page
+            // Check if we're trying to capture a restricted page
             const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
             const currentTab = tabs[0];
-            if (currentTab && currentTab.url && currentTab.url.startsWith('chrome://')) {
-                throw new Error('Chrome pages cannot be captured due to security restrictions. Please select a different tab.');
+            const restrictedUrls = ['chrome://', 'chrome-extension://', 'edge://', 'about:'];
+            
+            if (currentTab && currentTab.url && restrictedUrls.some(prefix => currentTab.url?.startsWith(prefix))) {
+                throw new Error('This page cannot be captured due to browser security restrictions. Please select a different tab.');
             }
 
             if (this.streaming) {
@@ -294,8 +297,15 @@ class Sidebar {
                 `;
                 this.elements.statusMessage.textContent = 'Streaming stopped';
                 this.elements.streamingStatus.classList.remove('streaming-active');
-                this.streaming = false;
             } else {
+                // Request tab capture permission first
+                try {
+                    await chrome.tabs.update(Number(this.selectedTabId), { active: true });
+                    await new Promise(resolve => setTimeout(resolve, 100)); // Small delay to ensure tab activation
+                } catch (error) {
+                    console.warn('Failed to activate tab:', error);
+                }
+
                 // Capture tab audio
                 const stream = await new Promise<MediaStream>((resolve, reject) => {
                     chrome.tabCapture.capture(
@@ -312,7 +322,7 @@ class Sidebar {
                             if (chrome.runtime.lastError) {
                                 reject(new Error(chrome.runtime.lastError.message));
                             } else if (!stream) {
-                                reject(new Error('Failed to capture tab audio'));
+                                reject(new Error('Failed to capture tab audio. Please ensure you have granted the necessary permissions.'));
                             } else {
                                 resolve(stream);
                             }
@@ -335,7 +345,15 @@ class Sidebar {
             }
         } catch (error) {
             console.error('Streaming error:', error);
-            this.elements.statusMessage.textContent = `Failed to ${this.streaming ? 'stop' : 'start'} streaming: ${error}`;
+            this.elements.statusMessage.textContent = `Failed to ${this.streaming ? 'stop' : 'start'} streaming: ${(error as Error).message}`;
+            // Reset streaming state if we failed to start
+            if (!this.streaming) {
+                this.elements.startStreamingButton.innerHTML = `
+                    <span class="button-icon">🎙️</span>
+                    Start Streaming
+                `;
+                this.elements.streamingStatus.classList.remove('streaming-active');
+            }
         }
     }
 
