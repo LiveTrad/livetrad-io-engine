@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "LiveTrad",
-  "version": "1.0",
+  "version": "1.0.0",
   "description": "Real-time audio translation for online meetings",
   "permissions": [
     "tabCapture",
     "sidePanel",
     "storage",
-    "tabs"
+    "tabs",
+    "activeTab"
   ],
   "side_panel": {
     "default_path": "sidebar.html"
