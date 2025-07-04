@@ -80,7 +80,7 @@ window.api.onConnectionChange((status, details) => {
 });
 
 // Listen for audio data
-window.api.onAudioData((audioData) => {
+window.api.onAudioStats((audioData) => {
     console.log('Received audio chunk:', audioData.length, 'samples');
     updateAudioLevel(audioData);
 });
@@ -111,7 +111,7 @@ const playbackStatus = document.getElementById('playbackStatus');
 // Gestionnaire d'événements pour la checkbox
 togglePlaybackCheckbox.addEventListener('change', async () => {
     try {
-        const result = await window.electron.ipcRenderer.invoke('toggle-playback');
+        const result = await window.api.invoke('toggle-playback');
         if (result.success) {
             isPlaying = result.isPlaying;
             togglePlaybackCheckbox.checked = isPlaying;
@@ -129,7 +129,7 @@ togglePlaybackCheckbox.addEventListener('change', async () => {
 // Mettre à jour l'état de la checkbox au démarrage
 async function updatePlaybackCheckboxState() {
     try {
-        const status = await window.electron.ipcRenderer.invoke('get-playback-status');
+        const status = await window.api.invoke('get-playback-status');
         isPlaying = status.isPlaying;
         togglePlaybackCheckbox.checked = isPlaying;
         playbackStatus.textContent = `Playback: ${isPlaying ? 'ON' : 'OFF'}`;
