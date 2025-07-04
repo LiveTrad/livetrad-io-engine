@@ -116,7 +116,11 @@
                 <span id="averageLevel">Average level: 0 dB</span>
             </div>
             <div id="streamingStatus">No audio streaming</div>
-            <button id="togglePlaybackButton" class="btn">Start Playback</button>
+            <div id="playbackControl">
+                <input type="checkbox" id="togglePlaybackCheckbox" />
+                <label for="togglePlaybackCheckbox">Enable Audio Playback</label>
+                <div id="playbackStatus">Playback: OFF</div>
+            </div>
         </div>
     </div>
     <script src="renderer.js"></script>

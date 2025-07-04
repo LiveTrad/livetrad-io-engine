@@ -105,36 +105,50 @@ setInterval(() => {
 }, 1000);
 
 // Éléments DOM
-const togglePlaybackButton = document.getElementById('togglePlaybackButton');
+const togglePlaybackCheckbox = document.getElementById('togglePlaybackCheckbox');
+const playbackStatus = document.getElementById('playbackStatus');
 
-// Gestionnaire d'événements pour le bouton de lecture
-togglePlaybackButton.addEventListener('click', async () => {
+// Gestionnaire d'événements pour la checkbox
+togglePlaybackCheckbox.addEventListener('change', async () => {
     try {
-        const result = await window.electron.ipcRenderer.invoke('toggle-playback');
-        if (result.success) {
-            isPlaying = result.isPlaying;
-            togglePlaybackButton.textContent = isPlaying ? 'Stop Playback' : 'Start Playback';
-            togglePlaybackButton.classList.toggle('active', isPlaying);
-            console.log(`Playback ${isPlaying ? 'started' : 'stopped'}`);
+        const electron = window.require ? window.require('electron') : null;
+        if (electron) {
+            const result = await electron.ipcRenderer.invoke('toggle-playback');
+            if (result.success) {
+                isPlaying = result.isPlaying;
+                togglePlaybackCheckbox.checked = isPlaying;
+                playbackStatus.textContent = `Playback: ${isPlaying ? 'ON' : 'OFF'}`;
+                playbackStatus.style.color = isPlaying ? '#4CAF50' : '#F44336';
+                console.log(`Playback ${isPlaying ? 'started' : 'stopped'}`);
+            } else {
+                console.error('Failed to toggle playback:', result.error);
+            }
         } else {
-            console.error('Failed to toggle playback:', result.error);
+            console.error('Electron API not available. Node integration might be disabled.');
+            alert('Cannot toggle playback: Electron API not available. Please check application settings.');
         }
     } catch (error) {
         console.error('Error toggling playback:', error);
     }
 });
 
-// Mettre à jour l'état du bouton au démarrage
-async function updatePlaybackButtonState() {
+// Mettre à jour l'état de la checkbox au démarrage
+async function updatePlaybackCheckboxState() {
     try {
-        const status = await window.electron.ipcRenderer.invoke('get-playback-status');
-        isPlaying = status.isPlaying;
-        togglePlaybackButton.textContent = isPlaying ? 'Stop Playback' : 'Start Playback';
-        togglePlaybackButton.classList.toggle('active', isPlaying);
+        const electron = window.require ? window.require('electron') : null;
+        if (electron) {
+            const status = await electron.ipcRenderer.invoke('get-playback-status');
+            isPlaying = status.isPlaying;
+            togglePlaybackCheckbox.checked = isPlaying;
+            playbackStatus.textContent = `Playback: ${isPlaying ? 'ON' : 'OFF'}`;
+            playbackStatus.style.color = isPlaying ? '#4CAF50' : '#F44336';
+        } else {
+            console.error('Electron API not available. Node integration might be disabled.');
+        }
     } catch (error) {
         console.error('Error getting playback status:', error);
     }
 }
 
 // Appeler au démarrage
-updatePlaybackButtonState();
+updatePlaybackCheckboxState();

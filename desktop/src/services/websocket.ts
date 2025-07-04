@@ -93,6 +93,7 @@ export class WebSocketService extends EventEmitter {
                         // Si le playback est actif, envoyer les données audio au processus ffplay
                         if (this.isPlaying && this.audioPlaybackProcess) {
                             try {
+                                console.log('[WebSocket] Sending audio chunk to playback process, buffer size:', audioBuffer.length);
                                 this.audioPlaybackProcess.stdin.write(audioBuffer);
                                 console.log('[WebSocket] Sent audio chunk to playback process');
                             } catch (error) {
@@ -193,11 +194,20 @@ export class WebSocketService extends EventEmitter {
             return;
         }
 
+        // Vérifier si ffplay est disponible
+        const ffplayCheck = spawn('which', ['ffplay']);
+        ffplayCheck.on('close', (code: number) => {
+            if (code !== 0) {
+                console.error('[WebSocket] ffplay not found. Please ensure FFmpeg is installed on your system.');
+                return;
+            }
+        });
+
         // Utiliser ffplay pour lire le flux PCM en direct
         // Format: PCM 16-bit, 16kHz, mono
-        this.audioPlaybackProcess = spawn('ffplay', ['-f', 's16le', '-ar', '16000', '-ac', '1', '-i', 'pipe:']);
+        this.audioPlaybackProcess = spawn('ffplay', ['-f', 's16le', '-ar', '16000', '-ac', '1', '-i', 'pipe:', '-nodisp', '-autoexit']);
         this.isPlaying = true;
-        console.log('[WebSocket] Started audio playback process');
+        console.log('[WebSocket] Started audio playback process with PID:', this.audioPlaybackProcess.pid);
 
         this.audioPlaybackProcess.stdout.on('data', (data: Buffer) => {
             console.log(`[ffplay stdout] ${data.toString()}`);
