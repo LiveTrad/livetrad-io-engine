@@ -32,148 +32,118 @@ export class AudioCaptureService {
         throw new Error('No stream provided');
       }
 
-      // Ensure WebSocket connection is established and maintained
-      if (!this.wsService || this.wsService.getConnectionState().status !== 'connected') {
+      // Ensure WebSocket connection is established before streaming
+      if (this.wsService.getConnectionState().status !== 'connected') {
         console.log('[AudioCapture] WebSocket not connected, attempting to connect...');
         try {
           await this.wsService.connect();
         } catch (wsError) {
           console.error('[AudioCapture] Failed to establish WebSocket connection:', wsError);
-          throw new Error('Failed to establish WebSocket connection. Please ensure you are connected before starting streaming.');
+          throw new Error('Failed to establish WebSocket connection. Please ensure the desktop app is running.');
         }
       }
 
-      console.log('[AudioCapture] Validating audio stream...');
-      if (!stream || stream.getTracks().length === 0) {
-        console.error('[AudioCapture] Stream or tracks are empty');
-        throw new Error('Invalid audio stream');
-      }
-      
-      const tracks = stream.getTracks();
-      console.log(`[AudioCapture] Stream validated: ${tracks.length} tracks found`);
-      tracks.forEach((track, index) => {
-        console.log(`[AudioCapture] Track ${index + 1}:`, {
-          kind: track.kind,
-          id: track.id,
-          enabled: track.enabled,
-          muted: track.muted,
-          readyState: track.readyState
-        });
-      });
-
-      // Setup audio processing
-      console.log('[AudioCapture] Initializing AudioContext...');
-      this.audioContext = new AudioContext();
-      console.log('[AudioCapture] AudioContext created:', {
-        sampleRate: this.audioContext.sampleRate,
-        state: this.audioContext.state,
-        baseLatency: this.audioContext.baseLatency
-      });
-
-      console.log('[AudioCapture] Creating MediaStreamSource...');
-      this.source = this.audioContext.createMediaStreamSource(stream);
-      console.log('[AudioCapture] MediaStreamSource created successfully');
-
-      const config = this.wsService.getAudioConfig();
-      console.log('[AudioCapture] Creating ScriptProcessor with config:', {
-        bufferSize: config.bufferSize,
-        inputChannels: config.channels,
-        outputChannels: config.channels
-      });
-
-      this.processor = this.audioContext.createScriptProcessor(
-        config.bufferSize,
-        config.channels,
-        config.channels
-      );
-      console.log('[AudioCapture] ScriptProcessor created successfully');
-
-      // Process audio data
-      let chunkCount = 0;
-      let lastLogTime = Date.now();
-      const logInterval = 1000; // Log every second
-
-      this.processor.onaudioprocess = (e) => {
-        const audioData = e.inputBuffer.getChannelData(0);
-        const currentTime = Date.now();
-
-        // Audio analysis
-        let hasSound = false;
-        let maxValue = 0;
-        let minValue = 0;
-        let sum = 0;
-        let zeroes = 0;
-
-        for (let i = 0; i < audioData.length; i++) {
-          const value = audioData[i];
-          if (value !== 0) {
-            hasSound = true;
-          } else {
-            zeroes++;
-          }
-          maxValue = Math.max(maxValue, value);
-          minValue = Math.min(minValue, value);
-          sum += Math.abs(value);
-        }
-
-        const avgAmplitude = sum / audioData.length;
-        
-        // Log audio statistics periodically
-        if (currentTime - lastLogTime >= logInterval) {
-          console.log('[AudioCapture] Audio processing stats:', {
-            chunkCount,
-            bufferSize: audioData.length,
-            hasSound,
-            maxValue: maxValue.toFixed(4),
-            minValue: minValue.toFixed(4),
-            avgAmplitude: avgAmplitude.toFixed(4),
-            zeroSamples: zeroes,
-            nonZeroSamples: audioData.length - zeroes,
-            chunksPerSecond: chunkCount / ((currentTime - lastLogTime) / 1000)
-          });
-          lastLogTime = currentTime;
-          chunkCount = 0;
-        }
-
-        // Send audio data if we have sound and connection is active
-        if (hasSound) {
-          try {
-            if (this.wsService.getConnectionState().status === 'connected') {
-              console.log('[AudioCapture] Sending audio chunk:', {
-                size: audioData.length,
-                maxAmplitude: maxValue.toFixed(4),
-                avgAmplitude: avgAmplitude.toFixed(4)
-              });
-              const audioArray = new Float32Array(audioData);
-              this.wsService.sendAudioChunk(audioArray.buffer);
-            } else {
-              console.warn('[AudioCapture] Cannot send audio chunk: WebSocket not connected');
-            }
-          } catch (error) {
-            console.error('[AudioCapture] Error sending audio chunk:', error);
-            // Don't throw here to keep the audio processing running
-          }
-        }
-        chunkCount++;
-      };
-
-      // Connect the audio nodes
-      console.log('[AudioCapture] Connecting audio nodes...');
-      this.source.connect(this.processor);
-      this.processor.connect(this.audioContext.destination);
-      console.log('[AudioCapture] Audio nodes connected successfully');
-
-      // Update state with the new stream
+      // Update state
       this.state = {
         isStreaming: true,
         activeTabId: tabId,
-        stream
+        stream: stream
       };
-      console.log('[AudioCapture] Streaming state updated:', this.state);
 
+      console.log('[AudioCapture] Creating audio context...');
+      this.audioContext = new AudioContext({
+        sampleRate: 16000
+      });
+      console.log('[AudioCapture] AudioContext created with sample rate:', this.audioContext.sampleRate);
+
+      this.source = this.audioContext.createMediaStreamSource(stream);
+      console.log('[AudioCapture] Audio source created');
+
+      // Create a ScriptProcessorNode for audio processing
+      const bufferSize = 4096;
+      this.processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
+      console.log('[AudioCapture] ScriptProcessorNode created with bufferSize:', bufferSize);
+
+      // Connect the audio graph
+      this.source.connect(this.processor);
+      // Connect to destination to keep context running
+      this.processor.connect(this.audioContext.destination);
+
+      // Audio processing function
+      let chunkCount = 0;
+      let lastLogTime = performance.now();
+
+      this.processor.onaudioprocess = (event) => {
+        try {
+          const inputBuffer = event.inputBuffer;
+          const audioData = inputBuffer.getChannelData(0);
+          const currentTime = performance.now();
+
+          // Convert Float32Array to Int16Array (PCM 16-bit)
+          const pcmData = new Int16Array(audioData.length);
+          for (let i = 0; i < audioData.length; i++) {
+            const s = Math.max(-1, Math.min(1, audioData[i]));
+            pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          }
+
+          let maxValue = Number.MIN_VALUE;
+          let minValue = Number.MAX_VALUE;
+          let sumAmplitude = 0;
+          let zeroes = 0;
+
+          for (let i = 0; i < audioData.length; i++) {
+            const value = audioData[i];
+            maxValue = Math.max(maxValue, value);
+            minValue = Math.min(minValue, value);
+            sumAmplitude += Math.abs(value);
+            if (value === 0) zeroes++;
+          }
+
+          const avgAmplitude = sumAmplitude / audioData.length;
+          const hasSound = maxValue > 0.01 || avgAmplitude > 0.005;
+          chunkCount++;
+
+          if (currentTime - lastLogTime >= 1000) {
+            console.log('[AudioCapture] Audio chunk processed:', {
+              hasSound,
+              maxValue: maxValue.toFixed(4),
+              minValue: minValue.toFixed(4),
+              avgAmplitude: avgAmplitude.toFixed(4),
+              zeroSamples: zeroes,
+              nonZeroSamples: audioData.length - zeroes,
+              chunksPerSecond: chunkCount / ((currentTime - lastLogTime) / 1000)
+            });
+            lastLogTime = currentTime;
+            chunkCount = 0;
+          }
+
+          // Send audio data if we have sound and connection is active
+          if (hasSound) {
+            try {
+              const connectionState = this.wsService.getConnectionState();
+              if (connectionState.status === 'connected') {
+                console.log('[AudioCapture] Sending PCM audio chunk:', {
+                  size: pcmData.length,
+                  maxAmplitude: maxValue.toFixed(4),
+                  avgAmplitude: avgAmplitude.toFixed(4)
+                });
+                this.wsService.sendAudioChunk(pcmData.buffer);
+              } else {
+                console.warn('[AudioCapture] Cannot send audio chunk: WebSocket not connected');
+              }
+            } catch (error) {
+              console.error('[AudioCapture] Error sending audio chunk:', error);
+            }
+          }
+        } catch (error) {
+          console.error('[AudioCapture] Error in audio processing:', error);
+        }
+      };
+
+      console.log('[AudioCapture] Audio processing started for tab', tabId);
       return { success: true };
     } catch (error) {
-      console.error('[AudioCapture] Error starting streaming:', error);
+      console.error('[AudioCapture] Failed to start streaming:', error);
       return { success: false, error: String(error) };
     }
   }

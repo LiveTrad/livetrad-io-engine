@@ -60,49 +60,27 @@ export class WebSocketService {
         return this.audioConfig;
     }
 
-    public sendAudioChunk(chunk: ArrayBuffer): void {
-        if (!this.ws) {
-            console.error('[WebSocket] Cannot send audio chunk: no WebSocket instance');
-            throw new Error('WebSocket not initialized');
-        }
+    public sendAudioChunk(audioData: ArrayBuffer | ArrayBufferView): boolean {
+        return this.send(audioData);
+    }
 
-        if (this.ws.readyState !== WebSocket.OPEN) {
-            console.error('[WebSocket] Cannot send audio chunk: connection not open (State:', this.ws.readyState, ')');
-            // Attempt to reconnect if not already connecting
-            if (this.ws.readyState !== WebSocket.CONNECTING && !this.isVoluntaryDisconnect) {
-                console.log('[WebSocket] Attempting to reconnect...');
-                this.connect().catch(error => {
-                    console.error('[WebSocket] Reconnection failed:', error);
-                });
-            }
-            throw new Error('WebSocket connection not open');
+    public send(message: string | ArrayBuffer | ArrayBufferView): boolean {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            console.warn('[WebSocket] Cannot send message: WebSocket is not connected');
+            return false;
         }
-
-        console.log(`[WebSocket] Preparing to send audio chunk: ${chunk.byteLength} bytes`);
 
         try {
-            // Convert ArrayBuffer to Base64 string for safe transmission
-            const audioArray = new Float32Array(chunk);
-            const base64Data = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(audioArray.buffer))));
-            
-            console.log(`[WebSocket] Converted audio chunk to base64: ${base64Data.length} characters`);
-
-            // Send audio data with configured parameters
-            const message = JSON.stringify({
-                type: 'audio_chunk',
-                data: base64Data,
-                sampleRate: this.audioConfig.sampleRate,
-                channels: this.audioConfig.channels,
-                bufferSize: this.audioConfig.bufferSize,
-                timestamp: Date.now()
-            });
-            
             this.ws.send(message);
-            console.log('[WebSocket] Successfully sent audio chunk');
+            return true;
         } catch (error) {
-            console.error('[WebSocket] Failed to send audio chunk:', error);
-            throw error;
+            console.error('[WebSocket] Error sending message:', error);
+            return false;
         }
+    }
+    
+    public sendRawAudioChunk(audioData: ArrayBuffer | ArrayBufferView): boolean {
+        return this.send(audioData);
     }
 
     public getConnectionState(): ConnectionState {

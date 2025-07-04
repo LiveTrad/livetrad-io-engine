@@ -1,10 +1,11 @@
-import { WebSocketServer, WebSocket, RawData } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import { EventEmitter } from 'events';
 import { config } from '../config/env';
 
 export class WebSocketService extends EventEmitter {
     private wss: WebSocketServer | null = null;
     private connections: Map<WebSocket, string> = new Map();
+    private audioStats: any = null;
 
     constructor() {
         super();
@@ -26,122 +27,115 @@ export class WebSocketService extends EventEmitter {
             return;
         }
 
-        this.wss.on('connection', this.handleConnection.bind(this));
-        this.wss.on('error', (error) => {
-            console.error('WebSocket server error:', error);
-            this.emit('connection-change', { status: false });
-        });
-        this.wss.on('listening', () => {
-            console.log('WebSocket server is listening for connections');
-        });
-    }
+        this.wss.on('connection', (ws: WebSocket) => {
+            const clientId = this.generateClientId();
+            this.connections.set(ws, clientId);
+            console.log(`[WebSocket] New connection from client ${clientId}`);
+            
+            this.emit('connection-change', {
+                status: 'connected',
+                clients: this.connections.size
+            });
 
-    private handleConnection(ws: WebSocket): void {
-        const clientId = Math.random().toString(36).substr(2, 9);
-        console.log(`New client connected (ID: ${clientId})`);
-        this.connections.set(ws, clientId);
-        this.emit('connection-change', { 
-            status: true,
-            details: {
-                clientId: clientId
-            }
-        });
+            ws.on('message', (data: Buffer | ArrayBuffer | Buffer[]) => {
+                try {
+                    if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
+                        // Handle binary audio data (PCM)
+                        const audioBuffer = Buffer.from(data);
+                        console.log('[WebSocket] Received audio chunk:', {
+                            size: audioBuffer.length,
+                            timestamp: new Date().toISOString()
+                        });
 
-        ws.send(JSON.stringify({
-            type: 'connection_status',
-            status: 'connected',
-            clientId: clientId
-        }));
+                        // Calculate audio stats
+                        // Assuming PCM 16-bit data, we need to convert to float for stats
+                        const int16Array = new Int16Array(audioBuffer.buffer, audioBuffer.byteOffset, audioBuffer.length / 2);
+                        let sum = 0;
+                        let maxValue = Number.MIN_VALUE;
+                        let minValue = Number.MAX_VALUE;
 
-        ws.on('message', (data) => {
-            console.log(`Received message from client ${clientId}`);
-            this.handleMessage(ws, data);
-        });
-        
-        ws.on('close', (code, reason) => {
-            console.log(`Client ${clientId} disconnected. Code: ${code}, Reason: ${reason}`);
-            this.connections.delete(ws);
-            this.emit('connection-change', { 
-                status: this.connections.size > 0,
-                details: this.connections.size > 0 ? {
-                    clientId: Array.from(this.connections.values())[0]
-                } : null
+                        for (let i = 0; i < int16Array.length; i++) {
+                            const value = int16Array[i] / 32768; // Convert to [-1, 1] range
+                            sum += Math.abs(value);
+                            maxValue = Math.max(maxValue, value);
+                            minValue = Math.min(minValue, value);
+                        }
+
+                        const avgValue = int16Array.length > 0 ? sum / int16Array.length : 0;
+
+                        this.audioStats = {
+                            chunkSize: audioBuffer.length,
+                            maxValue: maxValue.toFixed(4),
+                            minValue: minValue.toFixed(4),
+                            avgValue: avgValue.toFixed(4),
+                            timestamp: new Date().toISOString()
+                        };
+
+                        // Emit audio stats for UI updates
+                        this.emit('audio-stats', this.audioStats);
+
+                        // Log detailed stats to console
+                        console.log('[WebSocket] Audio chunk stats:', this.audioStats);
+                        
+                        // Optionally save PCM data to file (for debugging or further processing)
+                        // Uncomment to save PCM data
+                        /*
+                        const fs = require('fs');
+                        const outputPath = 'output_audio.pcm';
+                        fs.appendFileSync(outputPath, audioBuffer);
+                        console.log(`[WebSocket] Appended audio chunk to ${outputPath}`);
+                        */
+                    } else {
+                        // Handle JSON messages
+                        const message = JSON.parse(data.toString());
+                        console.log('[WebSocket] Received message:', message);
+
+                        switch (message.type) {
+                            case 'ping':
+                                ws.send(JSON.stringify({ type: 'pong' }));
+                                break;
+                            default:
+                                console.warn('[WebSocket] Unknown message type:', message.type);
+                        }
+                    }
+                } catch (error) {
+                    console.error('[WebSocket] Error processing message:', error);
+                }
+            });
+
+            ws.on('close', () => {
+                const clientId = this.connections.get(ws);
+                this.connections.delete(ws);
+                console.log(`[WebSocket] Client ${clientId} disconnected`);
+                
+                this.emit('connection-change', {
+                    status: this.connections.size > 0 ? 'connected' : 'disconnected',
+                    clients: this.connections.size
+                });
+            });
+
+            ws.on('error', (error: Error) => {
+                console.error(`[WebSocket] WebSocket error for client ${clientId}:`, error);
             });
         });
 
-        ws.on('error', (error) => {
-            console.error(`Error with client ${clientId}:`, error);
+        this.wss.on('listening', () => {
+            console.log('[WebSocket] Server is listening');
+            this.emit('server-listening', { status: 'listening' });
+        });
+
+        this.wss.on('error', (error) => {
+            console.error('[WebSocket] Server error:', error);
+            this.emit('server-error', { error });
         });
     }
 
-    private bufferSize: number = 4096;
-    private totalChunksReceived: number = 0;
-    private lastAudioStats: any = null;
-
-    private handleMessage(ws: WebSocket, data: RawData): void {
-        try {
-            const message = JSON.parse(data.toString());
-            console.log(`[WebSocket] Received message type: ${message.type}`);
-            
-            switch (message.type) {
-                case 'audio_chunk':
-                    console.log('[WebSocket] Received audio chunk');
-                    // Convert base64 back to audio data
-                    const binaryStr = atob(message.data);
-                    const bytes = new Uint8Array(binaryStr.length);
-                    for (let i = 0; i < binaryStr.length; i++) {
-                        bytes[i] = binaryStr.charCodeAt(i);
-                    }
-                    const audioData = new Float32Array(bytes.buffer);
-                    console.log(`[WebSocket] Decoded audio chunk: ${audioData.length} samples`);
-                    
-                    // Calculate audio statistics
-                    let maxValue = -Infinity;
-                    let minValue = Infinity;
-                    let sum = 0;
-                    let hasSound = false;
-
-                    for (let i = 0; i < audioData.length; i++) {
-                        const value = audioData[i];
-                        maxValue = Math.max(maxValue, value);
-                        minValue = Math.min(minValue, value);
-                        sum += Math.abs(value);
-                        if (Math.abs(value) > 0.01) hasSound = true;
-                    }
-
-                    const avgValue = sum / audioData.length;
-
-                    // Update audio stats
-                    this.totalChunksReceived++;
-                    this.lastAudioStats = {
-                        chunkCount: this.totalChunksReceived,
-                        bufferSize: message.bufferSize,
-                        hasSound,
-                        maxValue: maxValue.toFixed(4),
-                        minValue: minValue.toFixed(4),
-                        avgValue: avgValue.toFixed(4),
-                        timestamp: new Date().toISOString()
-                    };
-
-                    // Emit audio stats for UI updates
-                    this.emit('audio-stats', this.lastAudioStats);
-
-                    // Log detailed stats to console
-                    console.log('[WebSocket] Audio chunk stats:', this.lastAudioStats);
-                    break;
-                case 'ping':
-                    ws.send(JSON.stringify({ type: 'pong' }));
-                    break;
-                default:
-                    console.log('[WebSocket] Unknown message type:', message.type);
-            }
-        } catch (error) {
-            console.error('[WebSocket] Error parsing message:', error);
-        }
+    private generateClientId(): string {
+        return Math.random().toString(36).substr(2, 9);
     }
 
     public getLastAudioStats(): any {
-        return this.lastAudioStats;
+        return this.audioStats;
     }
 
     public onAudioStats(callback: (stats: any) => void): void {
