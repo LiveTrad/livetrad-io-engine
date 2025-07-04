@@ -1,6 +1,7 @@
 // Audio monitoring state
 let audioChunksCount = 0;
 let lastAudioLevel = 0;
+let isPlaying = false;
 
 // Update connection status
 function updateStatus(isConnected, details = {}) {
@@ -102,3 +103,38 @@ setInterval(() => {
         statusElement.textContent = 'No audio data received for 5 seconds';
     }
 }, 1000);
+
+// Éléments DOM
+const togglePlaybackButton = document.getElementById('togglePlaybackButton');
+
+// Gestionnaire d'événements pour le bouton de lecture
+togglePlaybackButton.addEventListener('click', async () => {
+    try {
+        const result = await window.electron.ipcRenderer.invoke('toggle-playback');
+        if (result.success) {
+            isPlaying = result.isPlaying;
+            togglePlaybackButton.textContent = isPlaying ? 'Stop Playback' : 'Start Playback';
+            togglePlaybackButton.classList.toggle('active', isPlaying);
+            console.log(`Playback ${isPlaying ? 'started' : 'stopped'}`);
+        } else {
+            console.error('Failed to toggle playback:', result.error);
+        }
+    } catch (error) {
+        console.error('Error toggling playback:', error);
+    }
+});
+
+// Mettre à jour l'état du bouton au démarrage
+async function updatePlaybackButtonState() {
+    try {
+        const status = await window.electron.ipcRenderer.invoke('get-playback-status');
+        isPlaying = status.isPlaying;
+        togglePlaybackButton.textContent = isPlaying ? 'Stop Playback' : 'Start Playback';
+        togglePlaybackButton.classList.toggle('active', isPlaying);
+    } catch (error) {
+        console.error('Error getting playback status:', error);
+    }
+}
+
+// Appeler au démarrage
+updatePlaybackButtonState();

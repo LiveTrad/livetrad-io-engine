@@ -89,6 +89,17 @@
             font-size: 0.9em;
             color: #666;
         }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            background: #4CAF50;
+            color: #fff;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background: #3e8e41;
+        }
     </style>
 </head>
 <body>
@@ -105,9 +116,9 @@
                 <span id="averageLevel">Average level: 0 dB</span>
             </div>
             <div id="streamingStatus">No audio streaming</div>
+            <button id="togglePlaybackButton" class="btn">Start Playback</button>
         </div>
     </div>
     <script src="renderer.js"></script>
 </body>
 </html>
-

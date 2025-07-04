@@ -1,11 +1,15 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { EventEmitter } from 'events';
 import { config } from '../config/env';
+import { createWriteStream } from 'fs';
+import { spawn } from 'child_process';
 
 export class WebSocketService extends EventEmitter {
     private wss: WebSocketServer | null = null;
     private connections: Map<WebSocket, string> = new Map();
     private audioStats: any = null;
+    private audioPlaybackProcess: any = null;
+    private isPlaying: boolean = false;
 
     constructor() {
         super();
@@ -85,6 +89,16 @@ export class WebSocketService extends EventEmitter {
                         fs.appendFileSync(outputPath, audioBuffer);
                         console.log(`[WebSocket] Appended audio chunk to ${outputPath}`);
                         */
+
+                        // Si le playback est actif, envoyer les données audio au processus ffplay
+                        if (this.isPlaying && this.audioPlaybackProcess) {
+                            try {
+                                this.audioPlaybackProcess.stdin.write(audioBuffer);
+                                console.log('[WebSocket] Sent audio chunk to playback process');
+                            } catch (error) {
+                                console.error('[WebSocket] Error sending audio to playback process:', error);
+                            }
+                        }
                     } else {
                         // Handle JSON messages
                         const message = JSON.parse(data.toString());
@@ -170,6 +184,57 @@ export class WebSocketService extends EventEmitter {
             this.wss.close();
             this.wss = null;
             this.emit('connection-change');
+        }
+    }
+
+    public startPlayback(): void {
+        if (this.isPlaying) {
+            console.log('[WebSocket] Audio playback already running');
+            return;
+        }
+
+        // Utiliser ffplay pour lire le flux PCM en direct
+        // Format: PCM 16-bit, 16kHz, mono
+        this.audioPlaybackProcess = spawn('ffplay', ['-f', 's16le', '-ar', '16000', '-ac', '1', '-i', 'pipe:']);
+        this.isPlaying = true;
+        console.log('[WebSocket] Started audio playback process');
+
+        this.audioPlaybackProcess.stdout.on('data', (data: Buffer) => {
+            console.log(`[ffplay stdout] ${data.toString()}`);
+        });
+
+        this.audioPlaybackProcess.stderr.on('data', (data: Buffer) => {
+            console.error(`[ffplay stderr] ${data.toString()}`);
+        });
+
+        this.audioPlaybackProcess.on('close', (code: number) => {
+            console.log(`[ffplay] Process exited with code ${code}`);
+            this.isPlaying = false;
+            this.audioPlaybackProcess = null;
+        });
+    }
+
+    public stopPlayback(): void {
+        if (!this.isPlaying || !this.audioPlaybackProcess) {
+            console.log('[WebSocket] No audio playback process to stop');
+            return;
+        }
+
+        this.audioPlaybackProcess.kill();
+        this.isPlaying = false;
+        this.audioPlaybackProcess = null;
+        console.log('[WebSocket] Stopped audio playback process');
+    }
+
+    public isPlaybackActive(): boolean {
+        return this.isPlaying;
+    }
+
+    public togglePlayback(): void {
+        if (this.isPlaying) {
+            this.stopPlayback();
+        } else {
+            this.startPlayback();
         }
     }
 }

@@ -19,6 +19,15 @@ class LiveTradApp {
             return this.wsService.getConnectionStatus();
         });
 
+        ipcMain.handle('toggle-playback', () => {
+            this.wsService.togglePlayback();
+            return { success: true, isPlaying: this.wsService.isPlaybackActive() };
+        });
+
+        ipcMain.handle('get-playback-status', () => {
+            return { isPlaying: this.wsService.isPlaybackActive() };
+        });
+
         // Listen for WebSocket connection changes
         // this.wsService.onConnectionChange((status) => {
         //     if (this.mainWindow.getWindow()) {
@@ -33,7 +42,7 @@ class LiveTradApp {
     this.mainWindow.getWindow()!.webContents.send('connection-change', data);
   });
   
-  this.wsService.onAudioStats((stats) => {
+  this.wsService.on('audio-stats', (stats) => {
     this.mainWindow.getWindow()!.webContents.send('audio-stats', stats);
   });
     }
