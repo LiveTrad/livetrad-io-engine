@@ -111,21 +111,15 @@ const playbackStatus = document.getElementById('playbackStatus');
 // Gestionnaire d'événements pour la checkbox
 togglePlaybackCheckbox.addEventListener('change', async () => {
     try {
-        const electron = window.require ? window.require('electron') : null;
-        if (electron) {
-            const result = await electron.ipcRenderer.invoke('toggle-playback');
-            if (result.success) {
-                isPlaying = result.isPlaying;
-                togglePlaybackCheckbox.checked = isPlaying;
-                playbackStatus.textContent = `Playback: ${isPlaying ? 'ON' : 'OFF'}`;
-                playbackStatus.style.color = isPlaying ? '#4CAF50' : '#F44336';
-                console.log(`Playback ${isPlaying ? 'started' : 'stopped'}`);
-            } else {
-                console.error('Failed to toggle playback:', result.error);
-            }
+        const result = await window.electron.ipcRenderer.invoke('toggle-playback');
+        if (result.success) {
+            isPlaying = result.isPlaying;
+            togglePlaybackCheckbox.checked = isPlaying;
+            playbackStatus.textContent = `Playback: ${isPlaying ? 'ON' : 'OFF'}`;
+            playbackStatus.style.color = isPlaying ? '#4CAF50' : '#F44336';
+            console.log(`Playback ${isPlaying ? 'started' : 'stopped'}`);
         } else {
-            console.error('Electron API not available. Node integration might be disabled.');
-            alert('Cannot toggle playback: Electron API not available. Please check application settings.');
+            console.error('Failed to toggle playback:', result.error);
         }
     } catch (error) {
         console.error('Error toggling playback:', error);
@@ -135,16 +129,11 @@ togglePlaybackCheckbox.addEventListener('change', async () => {
 // Mettre à jour l'état de la checkbox au démarrage
 async function updatePlaybackCheckboxState() {
     try {
-        const electron = window.require ? window.require('electron') : null;
-        if (electron) {
-            const status = await electron.ipcRenderer.invoke('get-playback-status');
-            isPlaying = status.isPlaying;
-            togglePlaybackCheckbox.checked = isPlaying;
-            playbackStatus.textContent = `Playback: ${isPlaying ? 'ON' : 'OFF'}`;
-            playbackStatus.style.color = isPlaying ? '#4CAF50' : '#F44336';
-        } else {
-            console.error('Electron API not available. Node integration might be disabled.');
-        }
+        const status = await window.electron.ipcRenderer.invoke('get-playback-status');
+        isPlaying = status.isPlaying;
+        togglePlaybackCheckbox.checked = isPlaying;
+        playbackStatus.textContent = `Playback: ${isPlaying ? 'ON' : 'OFF'}`;
+        playbackStatus.style.color = isPlaying ? '#4CAF50' : '#F44336';
     } catch (error) {
         console.error('Error getting playback status:', error);
     }
