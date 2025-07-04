@@ -1,4 +1,4 @@
-# Tab Audio Capture Extension
+# Tab Audio Capture Extension [Current step : Audio playback working]
 
 Extension Chrome moderne pour capturer l'audio d'onglets spécifiques avec un contrôle précis.
 
