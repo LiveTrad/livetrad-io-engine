@@ -188,20 +188,25 @@ export class WebSocketService extends EventEmitter {
         }
     }
 
-    public startPlayback(): void {
+    public async startPlayback(): Promise<void> {
         if (this.isPlaying) {
             console.log('[WebSocket] Audio playback already running');
             return;
         }
 
-        // Vérifier si ffplay est disponible
-        const ffplayCheck = spawn('which', ['ffplay']);
-        ffplayCheck.on('close', (code: number) => {
-            if (code !== 0) {
-                console.error('[WebSocket] ffplay not found. Please ensure FFmpeg is installed on your system.');
-                return;
-            }
-        });
+        // Vérifier les dépendances requises
+        const { checkDependencies, showErrorDialog } = await import('../utils/system');
+        const dependencies = await checkDependencies();
+        
+        if (!dependencies.ffmpeg || !dependencies.ffplay) {
+            let errorMessage = 'Les dépendances suivantes sont manquantes ou non accessibles :\n\n';
+            if (!dependencies.ffmpeg) errorMessage += '• FFmpeg\n';
+            if (!dependencies.ffplay) errorMessage += '• FFplay (inclus avec FFmpeg)\n\n';
+            errorMessage += 'Veuillez installer FFmpeg et ajouter son répertoire d\'installation à votre variable d\'environnement PATH.';
+            
+            showErrorDialog('Dépendances manquantes', errorMessage);
+            return;
+        }
 
         // Utiliser ffplay pour lire le flux PCM en direct
         // Format: PCM 16-bit, 16kHz, mono
