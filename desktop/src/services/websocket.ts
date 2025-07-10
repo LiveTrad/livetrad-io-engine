@@ -195,16 +195,15 @@ export class WebSocketService extends EventEmitter {
         }
 
         // Vérifier les dépendances requises
-        const { checkDependencies, showErrorDialog } = await import('../utils/system');
-        const dependencies = await checkDependencies();
+        const { checkFFmpegDependencies, showMissingDependenciesDialog } = await import('../utils/dependencies');
+        const { ffmpeg, ffplay, allDependenciesMet } = await checkFFmpegDependencies();
         
-        if (!dependencies.ffmpeg || !dependencies.ffplay) {
-            let errorMessage = 'Les dépendances suivantes sont manquantes ou non accessibles :\n\n';
-            if (!dependencies.ffmpeg) errorMessage += '• FFmpeg\n';
-            if (!dependencies.ffplay) errorMessage += '• FFplay (inclus avec FFmpeg)\n\n';
-            errorMessage += 'Veuillez installer FFmpeg et ajouter son répertoire d\'installation à votre variable d\'environnement PATH.';
+        if (!allDependenciesMet) {
+            const missingDeps = [];
+            if (!ffmpeg) missingDeps.push('FFmpeg');
+            if (!ffplay) missingDeps.push('FFplay (inclus avec FFmpeg)');
             
-            showErrorDialog('Dépendances manquantes', errorMessage);
+            showMissingDependenciesDialog(missingDeps);
             return;
         }
 
