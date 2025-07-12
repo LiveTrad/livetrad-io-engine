@@ -29,5 +29,30 @@ contextBridge.exposeInMainWorld('api', {
     // Get current connection status
     getConnectionStatus: () => {
       return ipcRenderer.invoke('get-connection-status');
+    },
+
+    // Transcription event handlers
+    onTranscription: (callback: any) => {
+      ipcRenderer.on('transcription', (_event, transcriptionData) => {
+        callback(transcriptionData);
+      });
+    },
+
+    onDeepgramConnected: (callback: any) => {
+      ipcRenderer.on('deepgram-connected', (_event) => {
+        callback();
+      });
+    },
+
+    onDeepgramDisconnected: (callback: any) => {
+      ipcRenderer.on('deepgram-disconnected', (_event) => {
+        callback();
+      });
+    },
+
+    onDeepgramError: (callback: any) => {
+      ipcRenderer.on('deepgram-error', (_event, error) => {
+        callback(error);
+      });
     }
   });

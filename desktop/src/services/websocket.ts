@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import { config } from '../config/env';
 import { createWriteStream } from 'fs';
 import { spawn } from 'child_process';
+import { DeepgramService, TranscriptionData } from './deepgram';
 
 export class WebSocketService extends EventEmitter {
     private wss: WebSocketServer | null = null;
@@ -10,9 +11,13 @@ export class WebSocketService extends EventEmitter {
     private audioStats: any = null;
     private audioPlaybackProcess: any = null;
     private isPlaying: boolean = false;
+    private deepgramService: DeepgramService;
+    private transcriptionEnabled: boolean = false;
 
     constructor() {
         super();
+        this.deepgramService = new DeepgramService();
+        this.setupDeepgramListeners();
     }
 
     public init(): void {
@@ -99,6 +104,11 @@ export class WebSocketService extends EventEmitter {
                             } catch (error) {
                                 console.error('[WebSocket] Error sending audio to playback process:', error);
                             }
+                        }
+
+                        // Si la transcription est activée, envoyer les données audio à Deepgram
+                        if (this.transcriptionEnabled) {
+                            this.deepgramService.sendAudioData(audioBuffer);
                         }
                     } else {
                         // Handle JSON messages
@@ -250,5 +260,80 @@ export class WebSocketService extends EventEmitter {
         } else {
             this.startPlayback();
         }
+    }
+
+    private setupDeepgramListeners(): void {
+        this.deepgramService.on('transcript', (transcriptionData: TranscriptionData) => {
+            console.log('[WebSocket] Received transcription:', transcriptionData);
+            this.emit('transcription', transcriptionData);
+        });
+
+        this.deepgramService.on('connected', () => {
+            console.log('[WebSocket] Deepgram connected');
+            this.emit('deepgram-connected');
+        });
+
+        this.deepgramService.on('disconnected', () => {
+            console.log('[WebSocket] Deepgram disconnected');
+            this.emit('deepgram-disconnected');
+        });
+
+        this.deepgramService.on('error', (error: any) => {
+            console.error('[WebSocket] Deepgram error:', error);
+            this.emit('deepgram-error', error);
+        });
+    }
+
+    public startTranscription(): void {
+        if (!this.transcriptionEnabled) {
+            this.deepgramService.startTranscription();
+            this.transcriptionEnabled = true;
+            console.log('[WebSocket] Transcription started');
+        }
+    }
+
+    public stopTranscription(): void {
+        if (this.transcriptionEnabled) {
+            this.deepgramService.stopTranscription();
+            this.transcriptionEnabled = false;
+            console.log('[WebSocket] Transcription stopped');
+        }
+    }
+
+    public toggleTranscription(): void {
+        if (this.transcriptionEnabled) {
+            this.stopTranscription();
+        } else {
+            this.startTranscription();
+        }
+    }
+
+    public isTranscriptionActive(): boolean {
+        return this.transcriptionEnabled && this.deepgramService.isTranscriptionActive();
+    }
+
+    public getTranscriptionStatus(): { active: boolean, connected: boolean, hasApiKey: boolean } {
+        const deepgramStatus = this.deepgramService.getConnectionStatus();
+        return {
+            active: this.transcriptionEnabled,
+            connected: deepgramStatus.connected,
+            hasApiKey: deepgramStatus.hasApiKey
+        };
+    }
+
+    public onTranscription(callback: (transcriptionData: TranscriptionData) => void): void {
+        this.on('transcription', callback);
+    }
+
+    public onDeepgramConnected(callback: () => void): void {
+        this.on('deepgram-connected', callback);
+    }
+
+    public onDeepgramDisconnected(callback: () => void): void {
+        this.on('deepgram-disconnected', callback);
+    }
+
+    public onDeepgramError(callback: (error: any) => void): void {
+        this.on('deepgram-error', callback);
     }
 }

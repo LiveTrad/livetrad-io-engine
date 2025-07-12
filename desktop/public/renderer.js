@@ -3,6 +3,11 @@ let audioChunksCount = 0;
 let lastAudioLevel = 0;
 let isPlaying = false;
 
+// Transcription state
+let isTranscriptionActive = false;
+let transcriptionHistory = [];
+const MAX_TRANSCRIPTION_HISTORY = 50;
+
 // Update connection status
 function updateStatus(isConnected, details = {}) {
     const statusElement = document.getElementById('status');
@@ -141,3 +146,140 @@ async function updatePlaybackCheckboxState() {
 
 // Appeler au démarrage
 updatePlaybackCheckboxState();
+
+// Transcription elements
+const toggleTranscriptionCheckbox = document.getElementById('toggleTranscriptionCheckbox');
+const transcriptionStatus = document.getElementById('transcriptionStatus');
+const transcriptionDisplay = document.getElementById('transcriptionDisplay');
+const transcriptionError = document.getElementById('transcriptionError');
+
+// Transcription event handlers
+window.api.onTranscription((transcriptionData) => {
+    console.log('Received transcription:', transcriptionData);
+    addTranscriptionToDisplay(transcriptionData);
+});
+
+window.api.onDeepgramConnected(() => {
+    console.log('Deepgram connected');
+    transcriptionStatus.textContent = 'Transcription: CONNECTÉ';
+    transcriptionStatus.style.color = '#4CAF50';
+    hideTranscriptionError();
+});
+
+window.api.onDeepgramDisconnected(() => {
+    console.log('Deepgram disconnected');
+    transcriptionStatus.textContent = 'Transcription: DÉCONNECTÉ';
+    transcriptionStatus.style.color = '#F44336';
+});
+
+window.api.onDeepgramError((error) => {
+    console.error('Deepgram error:', error);
+    showTranscriptionError(`Erreur Deepgram: ${error.message || 'Erreur inconnue'}`);
+});
+
+// Transcription checkbox handler
+toggleTranscriptionCheckbox.addEventListener('change', async () => {
+    try {
+        const result = await window.api.invoke('toggle-transcription');
+        if (result.success) {
+            isTranscriptionActive = result.isActive;
+            toggleTranscriptionCheckbox.checked = isTranscriptionActive;
+            updateTranscriptionStatus();
+            console.log(`Transcription ${isTranscriptionActive ? 'started' : 'stopped'}`);
+        } else {
+            console.error('Failed to toggle transcription:', result.error);
+        }
+    } catch (error) {
+        console.error('Error toggling transcription:', error);
+        showTranscriptionError(`Erreur: ${error.message}`);
+    }
+});
+
+// Update transcription status
+function updateTranscriptionStatus() {
+    if (isTranscriptionActive) {
+        transcriptionStatus.textContent = 'Transcription: ACTIVE';
+        transcriptionStatus.style.color = '#4CAF50';
+    } else {
+        transcriptionStatus.textContent = 'Transcription: DÉSACTIVÉE';
+        transcriptionStatus.style.color = '#666';
+    }
+}
+
+// Add transcription to display
+function addTranscriptionToDisplay(transcriptionData) {
+    const transcriptItem = document.createElement('div');
+    transcriptItem.className = `transcript-item ${transcriptionData.isFinal ? 'transcript-final' : 'transcript-interim'}`;
+    
+    const transcriptText = document.createElement('span');
+    transcriptText.textContent = transcriptionData.transcript;
+    
+    const confidenceText = document.createElement('span');
+    confidenceText.className = 'transcript-confidence';
+    confidenceText.textContent = `(${(transcriptionData.confidence * 100).toFixed(1)}%)`;
+    
+    transcriptItem.appendChild(transcriptText);
+    transcriptItem.appendChild(confidenceText);
+    
+    // Add timestamp
+    const timestamp = document.createElement('div');
+    timestamp.style.fontSize = '0.8em';
+    timestamp.style.color = '#999';
+    timestamp.style.marginTop = '2px';
+    timestamp.textContent = transcriptionData.timestamp.toLocaleTimeString();
+    transcriptItem.appendChild(timestamp);
+    
+    // Add to history
+    transcriptionHistory.push(transcriptItem);
+    
+    // Limit history size
+    if (transcriptionHistory.length > MAX_TRANSCRIPTION_HISTORY) {
+        transcriptionHistory.shift();
+    }
+    
+    // Update display
+    updateTranscriptionDisplay();
+}
+
+// Update transcription display
+function updateTranscriptionDisplay() {
+    transcriptionDisplay.innerHTML = '';
+    
+    if (transcriptionHistory.length === 0) {
+        transcriptionDisplay.innerHTML = '<div style="color: #666; font-style: italic;">En attente de transcription...</div>';
+        return;
+    }
+    
+    transcriptionHistory.forEach(item => {
+        transcriptionDisplay.appendChild(item.cloneNode(true));
+    });
+    
+    // Scroll to bottom
+    transcriptionDisplay.scrollTop = transcriptionDisplay.scrollHeight;
+}
+
+// Show transcription error
+function showTranscriptionError(message) {
+    transcriptionError.textContent = message;
+    transcriptionError.style.display = 'block';
+}
+
+// Hide transcription error
+function hideTranscriptionError() {
+    transcriptionError.style.display = 'none';
+}
+
+// Initialize transcription status
+async function updateTranscriptionCheckboxState() {
+    try {
+        const status = await window.api.invoke('get-transcription-status');
+        isTranscriptionActive = status.active;
+        toggleTranscriptionCheckbox.checked = isTranscriptionActive;
+        updateTranscriptionStatus();
+    } catch (error) {
+        console.error('Error getting transcription status:', error);
+    }
+}
+
+// Call on startup
+updateTranscriptionCheckboxState();

@@ -100,6 +100,57 @@
         .btn:hover {
             background: #3e8e41;
         }
+        .transcription-section {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .transcription-controls {
+            margin-bottom: 15px;
+        }
+        .transcription-status {
+            margin-bottom: 10px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        .transcription-display {
+            max-height: 300px;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        .transcript-item {
+            margin-bottom: 8px;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .transcript-final {
+            background: #e8f5e9;
+            border-left: 3px solid #4CAF50;
+        }
+        .transcript-interim {
+            background: #fff3e0;
+            border-left: 3px solid #ff9800;
+            font-style: italic;
+        }
+        .transcript-confidence {
+            font-size: 0.8em;
+            color: #666;
+            margin-left: 10px;
+        }
+        .error-message {
+            background: #ffebee;
+            color: #c62828;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -121,6 +172,19 @@
                 <label for="togglePlaybackCheckbox">Enable Audio Playback</label>
                 <div id="playbackStatus">Playback: OFF</div>
             </div>
+        </div>
+
+        <div id="transcriptionSection" class="transcription-section">
+            <h3>Transcription en temps réel</h3>
+            <div class="transcription-controls">
+                <input type="checkbox" id="toggleTranscriptionCheckbox" />
+                <label for="toggleTranscriptionCheckbox">Activer la transcription Deepgram</label>
+                <div id="transcriptionStatus" class="transcription-status">Transcription: DÉSACTIVÉE</div>
+            </div>
+            <div id="transcriptionDisplay" class="transcription-display">
+                <div style="color: #666; font-style: italic;">En attente de transcription...</div>
+            </div>
+            <div id="transcriptionError" class="error-message" style="display: none;"></div>
         </div>
     </div>
     <script src="renderer.js"></script>

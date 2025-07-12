@@ -27,5 +27,11 @@ export const config = {
         port: getEnvNumber('WS_PORT', 8080),
         host: getEnvVar('WS_HOST', 'localhost')
     },
+    deepgram: {
+        apiKey: getEnvVar('DEEPGRAM_API_KEY', ''),
+        language: getEnvVar('DEEPGRAM_LANGUAGE', 'fr'),
+        model: getEnvVar('DEEPGRAM_MODEL', 'nova'),
+        transcriptionPort: getEnvNumber('DEEPGRAM_TRANSCRIPTION_PORT', 3000)
+    },
     isDevelopment: getEnvVar('NODE_ENV', 'production') === 'development'
 };

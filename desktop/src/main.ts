@@ -28,23 +28,41 @@ class LiveTradApp {
             return { isPlaying: this.wsService.isPlaybackActive() };
         });
 
+        // Deepgram transcription handlers
+        ipcMain.handle('toggle-transcription', () => {
+            this.wsService.toggleTranscription();
+            return { success: true, isActive: this.wsService.isTranscriptionActive() };
+        });
+
+        ipcMain.handle('get-transcription-status', () => {
+            return this.wsService.getTranscriptionStatus();
+        });
+
         // Listen for WebSocket connection changes
-        // this.wsService.onConnectionChange((status) => {
-        //     if (this.mainWindow.getWindow()) {
-        //         this.mainWindow.getWindow()!.webContents.send('connection-change', status);
-        //     }
-        // });
+        this.wsService.onConnectionChange((data) => {
+            this.mainWindow.getWindow()!.webContents.send('connection-change', data);
+        });
+        
+        this.wsService.on('audio-stats', (stats) => {
+            this.mainWindow.getWindow()!.webContents.send('audio-stats', stats);
+        });
 
+        // Deepgram event handlers
+        this.wsService.onTranscription((transcriptionData) => {
+            this.mainWindow.getWindow()!.webContents.send('transcription', transcriptionData);
+        });
 
-  
-  // Make sure to forward WebSocketService events to the renderer
-  this.wsService.onConnectionChange((data) => {
-    this.mainWindow.getWindow()!.webContents.send('connection-change', data);
-  });
-  
-  this.wsService.on('audio-stats', (stats) => {
-    this.mainWindow.getWindow()!.webContents.send('audio-stats', stats);
-  });
+        this.wsService.onDeepgramConnected(() => {
+            this.mainWindow.getWindow()!.webContents.send('deepgram-connected');
+        });
+
+        this.wsService.onDeepgramDisconnected(() => {
+            this.mainWindow.getWindow()!.webContents.send('deepgram-disconnected');
+        });
+
+        this.wsService.onDeepgramError((error) => {
+            this.mainWindow.getWindow()!.webContents.send('deepgram-error', error);
+        });
     }
 
     private initApp(): void {
