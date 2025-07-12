@@ -108,7 +108,13 @@ export class WebSocketService extends EventEmitter {
 
                         // Si la transcription est activée, envoyer les données audio à Deepgram
                         if (this.transcriptionEnabled) {
+                            console.log('[WebSocket] Transcription ENABLED - sending audio chunk to Deepgram, size:', audioBuffer.length);
                             this.deepgramService.sendAudioData(audioBuffer);
+                        } else {
+                            // Log moins fréquent pour éviter le spam
+                            if (Math.random() < 0.01) { // 1% des chunks
+                                console.log('[WebSocket] Transcription DISABLED - skipping Deepgram');
+                            }
                         }
                     } else {
                         // Handle JSON messages
@@ -286,9 +292,12 @@ export class WebSocketService extends EventEmitter {
 
     public startTranscription(): void {
         if (!this.transcriptionEnabled) {
+            console.log('[WebSocket] Starting transcription service...');
             this.deepgramService.startTranscription();
             this.transcriptionEnabled = true;
-            console.log('[WebSocket] Transcription started');
+            console.log('[WebSocket] Transcription enabled:', this.transcriptionEnabled);
+        } else {
+            console.log('[WebSocket] Transcription already enabled');
         }
     }
 

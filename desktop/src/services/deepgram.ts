@@ -26,9 +26,13 @@ export class DeepgramService extends EventEmitter {
             return;
         }
 
+        console.log('[Deepgram] Initializing with API key:', config.deepgram.apiKey.substring(0, 10) + '...');
+        console.log('[Deepgram] Language:', config.deepgram.language);
+        console.log('[Deepgram] Model:', config.deepgram.model);
+
         try {
             this.deepgramClient = createClient(config.deepgram.apiKey);
-            console.log('[Deepgram] Client initialized');
+            console.log('[Deepgram] Client initialized successfully');
         } catch (error) {
             console.error('[Deepgram] Error initializing client:', error);
         }
@@ -45,19 +49,27 @@ export class DeepgramService extends EventEmitter {
             return;
         }
 
+        // Configuration complète pour Deepgram
+        const transcriptionConfig = {
+            language: 'en', // Commencer avec l'anglais pour tester
+            punctuate: true,
+            smart_format: true,
+            interim_results: true,
+            encoding: 'linear16',
+            channels: 1,
+            sample_rate: 16000,
+            endpointing: 300  // 300ms de silence pour finaliser
+        };
+
+        console.log('[Deepgram] Starting transcription with config:', transcriptionConfig);
+
         try {
-            this.deepgramConnection = this.deepgramClient.listen.live({
-                language: config.deepgram.language,
-                punctuate: true,
-                smart_format: true,
-                model: config.deepgram.model,
-                interim_results: true
-            });
+            this.deepgramConnection = this.deepgramClient.listen.live(transcriptionConfig);
 
             this.setupEventListeners();
             this.startKeepAlive();
             this.isConnected = true;
-            console.log('[Deepgram] Transcription started');
+            console.log('[Deepgram] Transcription started successfully');
         } catch (error) {
             console.error('[Deepgram] Error starting transcription:', error);
         }
@@ -72,9 +84,13 @@ export class DeepgramService extends EventEmitter {
         });
 
         this.deepgramConnection.addListener(LiveTranscriptionEvents.Transcript, (data: any) => {
+            console.log('[Deepgram] Raw transcript data received:', JSON.stringify(data, null, 2));
+            
             const transcript = data.channel?.alternatives?.[0]?.transcript || '';
             const confidence = data.channel?.alternatives?.[0]?.confidence || 0;
             const isFinal = data.is_final || false;
+
+            console.log('[Deepgram] Parsed transcript:', { transcript, confidence, isFinal });
 
             if (transcript.trim()) {
                 const transcriptionData: TranscriptionData = {
@@ -84,13 +100,15 @@ export class DeepgramService extends EventEmitter {
                     timestamp: new Date()
                 };
 
-                console.log('[Deepgram] Transcript:', transcriptionData);
+                console.log('[Deepgram] Emitting transcript:', transcriptionData);
                 this.emit('transcript', transcriptionData);
+            } else {
+                console.log('[Deepgram] Empty transcript received');
             }
         });
 
-        this.deepgramConnection.addListener(LiveTranscriptionEvents.Close, () => {
-            console.log('[Deepgram] Connection closed');
+        this.deepgramConnection.addListener(LiveTranscriptionEvents.Close, (event: any) => {
+            console.log('[Deepgram] Connection closed. Event:', event);
             this.isConnected = false;
             this.stopKeepAlive();
             this.emit('disconnected');
@@ -136,10 +154,13 @@ export class DeepgramService extends EventEmitter {
     public sendAudioData(audioBuffer: Buffer): void {
         if (this.deepgramConnection && this.isConnected) {
             try {
+                console.log('[Deepgram] Sending audio chunk to Deepgram, size:', audioBuffer.length);
                 this.deepgramConnection.send(audioBuffer);
             } catch (error) {
                 console.error('[Deepgram] Error sending audio data:', error);
             }
+        } else {
+            console.log('[Deepgram] Cannot send audio - connection not ready. Connected:', this.isConnected);
         }
     }
 
