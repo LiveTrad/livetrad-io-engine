@@ -7,6 +7,8 @@ let isPlaying = false;
 let isTranscriptionActive = false;
 let transcriptionHistory = [];
 const MAX_TRANSCRIPTION_HISTORY = 50;
+let currentInterimText = '';
+let detectedLanguage = 'Auto';
 
 // Update connection status
 function updateStatus(isConnected, details = {}) {
@@ -206,39 +208,56 @@ function updateTranscriptionStatus() {
     }
 }
 
-// Add transcription to display
+// Add transcription to display (YouTube style)
 function addTranscriptionToDisplay(transcriptionData) {
-    const transcriptItem = document.createElement('div');
-    transcriptItem.className = `transcript-item ${transcriptionData.isFinal ? 'transcript-final' : 'transcript-interim'}`;
+    const currentTranscription = document.getElementById('currentTranscription');
+    const completedTranscriptions = document.getElementById('completedTranscriptions');
     
-    const transcriptText = document.createElement('span');
-    transcriptText.textContent = transcriptionData.transcript;
-    
-    const confidenceText = document.createElement('span');
-    confidenceText.className = 'transcript-confidence';
-    confidenceText.textContent = `(${(transcriptionData.confidence * 100).toFixed(1)}%)`;
-    
-    transcriptItem.appendChild(transcriptText);
-    transcriptItem.appendChild(confidenceText);
-    
-    // Add timestamp
-    const timestamp = document.createElement('div');
-    timestamp.style.fontSize = '0.8em';
-    timestamp.style.color = '#999';
-    timestamp.style.marginTop = '2px';
-    timestamp.textContent = transcriptionData.timestamp.toLocaleTimeString();
-    transcriptItem.appendChild(timestamp);
-    
-    // Add to history
-    transcriptionHistory.push(transcriptItem);
-    
-    // Limit history size
-    if (transcriptionHistory.length > MAX_TRANSCRIPTION_HISTORY) {
-        transcriptionHistory.shift();
+    if (transcriptionData.isFinal) {
+        // Transcription finale - ajouter à l'historique
+        const completedItem = document.createElement('div');
+        completedItem.className = 'completed-transcript';
+        
+        const transcriptText = document.createElement('span');
+        transcriptText.textContent = transcriptionData.transcript;
+        
+        const confidenceText = document.createElement('span');
+        confidenceText.className = 'transcript-confidence';
+        confidenceText.textContent = ` (${(transcriptionData.confidence * 100).toFixed(1)}%)`;
+        
+        const languageBadge = document.createElement('span');
+        languageBadge.className = 'language-indicator';
+        languageBadge.textContent = detectedLanguage;
+        
+        const timestamp = document.createElement('div');
+        timestamp.style.fontSize = '0.8em';
+        timestamp.style.color = '#999';
+        timestamp.style.marginTop = '2px';
+        timestamp.textContent = transcriptionData.timestamp.toLocaleTimeString();
+        
+        completedItem.appendChild(transcriptText);
+        completedItem.appendChild(confidenceText);
+        completedItem.appendChild(languageBadge);
+        completedItem.appendChild(timestamp);
+        
+        completedTranscriptions.appendChild(completedItem);
+        
+        // Vider la transcription courante
+        currentTranscription.innerHTML = '<span style="color: #666; font-style: italic;">En attente...</span>';
+        currentInterimText = '';
+        
+        // Scroll to bottom
+        completedTranscriptions.scrollTop = completedTranscriptions.scrollHeight;
+        
+    } else {
+        // Transcription intermédiaire - mettre à jour la ligne courante
+        currentInterimText = transcriptionData.transcript;
+        currentTranscription.innerHTML = `
+            <span>${transcriptionData.transcript}</span>
+            <span class="transcript-confidence">(${(transcriptionData.confidence * 100).toFixed(1)}%)</span>
+            <span class="language-indicator">${detectedLanguage}</span>
+        `;
     }
-    
-    // Update display
-    updateTranscriptionDisplay();
 }
 
 // Update transcription display

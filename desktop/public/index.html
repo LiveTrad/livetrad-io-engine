@@ -125,6 +125,51 @@
             font-size: 14px;
             line-height: 1.4;
         }
+        
+        .youtube-style {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .current-transcription {
+            background: #fff3e0;
+            border-left: 3px solid #ff9800;
+            padding: 10px;
+            border-radius: 4px;
+            font-style: italic;
+            min-height: 20px;
+            animation: pulse 2s infinite;
+        }
+        
+        .completed-transcriptions {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .completed-transcript {
+            background: #e8f5e9;
+            border-left: 3px solid #4CAF50;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.8; }
+            100% { opacity: 1; }
+        }
+        
+        .language-indicator {
+            background: #2196F3;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            margin-left: 10px;
+        }
         .transcript-item {
             margin-bottom: 8px;
             padding: 5px;
@@ -181,8 +226,13 @@
                 <label for="toggleTranscriptionCheckbox">Activer la transcription Deepgram</label>
                 <div id="transcriptionStatus" class="transcription-status">Transcription: DÉSACTIVÉE</div>
             </div>
-            <div id="transcriptionDisplay" class="transcription-display">
-                <div style="color: #666; font-style: italic;">En attente de transcription...</div>
+            <div id="transcriptionDisplay" class="transcription-display youtube-style">
+                <div class="current-transcription" id="currentTranscription">
+                    <span style="color: #666; font-style: italic;">En attente de transcription...</span>
+                </div>
+                <div class="completed-transcriptions" id="completedTranscriptions">
+                    <!-- Les transcriptions finales apparaîtront ici -->
+                </div>
             </div>
             <div id="transcriptionError" class="error-message" style="display: none;"></div>
         </div>

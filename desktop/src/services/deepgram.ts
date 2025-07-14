@@ -7,6 +7,7 @@ export interface TranscriptionData {
     confidence: number;
     isFinal: boolean;
     timestamp: Date;
+    language?: string;
 }
 
 export class DeepgramService extends EventEmitter {
@@ -49,9 +50,9 @@ export class DeepgramService extends EventEmitter {
             return;
         }
 
-        // Configuration complète pour Deepgram
+        // Configuration qui fonctionnait avant
         const transcriptionConfig = {
-            language: 'en', // Commencer avec l'anglais pour tester
+            language: 'en', // Revenons à l'anglais qui marchait
             punctuate: true,
             smart_format: true,
             interim_results: true,
@@ -72,6 +73,29 @@ export class DeepgramService extends EventEmitter {
             console.log('[Deepgram] Transcription started successfully');
         } catch (error) {
             console.error('[Deepgram] Error starting transcription:', error);
+            
+            // Fallback: configuration simple sans auto-détection
+            console.log('[Deepgram] Trying fallback configuration...');
+            try {
+                const fallbackConfig = {
+                    language: 'en',
+                    punctuate: true,
+                    smart_format: true,
+                    interim_results: true,
+                    encoding: 'linear16',
+                    channels: 1,
+                    sample_rate: 16000,
+                    endpointing: 300
+                };
+                
+                this.deepgramConnection = this.deepgramClient.listen.live(fallbackConfig);
+                this.setupEventListeners();
+                this.startKeepAlive();
+                this.isConnected = true;
+                console.log('[Deepgram] Transcription started with fallback config');
+            } catch (fallbackError) {
+                console.error('[Deepgram] Error with fallback config:', fallbackError);
+            }
         }
     }
 
@@ -89,15 +113,17 @@ export class DeepgramService extends EventEmitter {
             const transcript = data.channel?.alternatives?.[0]?.transcript || '';
             const confidence = data.channel?.alternatives?.[0]?.confidence || 0;
             const isFinal = data.is_final || false;
+            const detectedLanguage = data.metadata?.language || 'Auto';
 
-            console.log('[Deepgram] Parsed transcript:', { transcript, confidence, isFinal });
+            console.log('[Deepgram] Parsed transcript:', { transcript, confidence, isFinal, detectedLanguage });
 
             if (transcript.trim()) {
                 const transcriptionData: TranscriptionData = {
                     transcript: transcript.trim(),
                     confidence,
                     isFinal,
-                    timestamp: new Date()
+                    timestamp: new Date(),
+                    language: detectedLanguage
                 };
 
                 console.log('[Deepgram] Emitting transcript:', transcriptionData);
