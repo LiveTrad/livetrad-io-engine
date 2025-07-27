@@ -2,31 +2,96 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { execSync } = require('child_process');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env.ffmpeg') });
 
-// Configuration des URLs pour télécharger FFmpeg
+// Détection de la plateforme actuelle
+function getCurrentPlatform() {
+    const platform = process.platform;
+    const arch = process.arch;
+    
+    if (platform === 'win32') {
+        return { platform: 'windows', arch: arch === 'x64' ? 'x64' : 'ia32' };
+    } else if (platform === 'linux') {
+        return { platform: 'linux', arch: arch === 'arm64' ? 'arm64' : 'x64' };
+    } else if (platform === 'darwin') {
+        return { platform: 'macos', arch: arch === 'arm64' ? 'arm64' : 'x64' };
+    }
+    
+    throw new Error(`Unsupported platform: ${platform}-${arch}`);
+}
+
+// Configuration des URLs à partir de .env uniquement
+// Aucune URL par défaut n'est définie dans le code
 const FFMPEG_URLS = {
     'windows': {
-        'x64': 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip',
-        'ia32': 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win32-gpl.zip'
+        'x64': process.env.FFMPEG_URL_WIN64,
+        'ia32': process.env.FFMPEG_URL_WIN32
     },
     'linux': {
-        'x64': 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz',
-        'arm64': 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz'
+        'x64': process.env.FFMPEG_URL_LINUX64,
+        'arm64': process.env.FFMPEG_URL_LINUX_ARM64
+    },
+    'darwin': {
+        'x64': process.env.FFMPEG_URL_MACOS_X64,
+        'arm64': process.env.FFMPEG_URL_MACOS_ARM64
     }
 };
 
-const BINARIES_DIR = path.join(__dirname, '..', 'binaries');
+// Fonction utilitaire pour afficher les plateformes supportées
+function listSupportedPlatforms() {
+    console.log('\n📋 Plateformes supportées (URLs définies dans .env.ffmpeg):');
+    
+    const platforms = [
+        { name: 'Windows x64', key: 'windows-x64', url: FFMPEG_URLS.windows?.x64 },
+        { name: 'Windows 32-bit', key: 'windows-ia32', url: FFMPEG_URLS.windows?.ia32 },
+        { name: 'Linux x64', key: 'linux-x64', url: FFMPEG_URLS.linux?.x64 },
+        { name: 'Linux ARM64', key: 'linux-arm64', url: FFMPEG_URLS.linux?.arm64 },
+        { name: 'macOS x64', key: 'darwin-x64', url: FFMPEG_URLS.darwin?.x64 },
+        { name: 'macOS ARM64', key: 'darwin-arm64', url: FFMPEG_URLS.darwin?.arm64 }
+    ];
+    
+    let hasSupportedPlatforms = false;
+    
+    for (const platform of platforms) {
+        if (platform.url) {
+            console.log(`✅ ${platform.name} (${platform.key}): ${platform.url}`);
+            hasSupportedPlatforms = true;
+        } else {
+            console.log(`❌ ${platform.name} (${platform.key}): URL non définie dans .env.ffmpeg`);
+        }
+    }
+    
+    if (!hasSupportedPlatforms) {
+        console.log('\n❌ Aucune plateforme configurée. Veuillez définir au moins une URL dans .env.ffmpeg');
+        console.log('   Consultez le fichier .env.ffmpeg.example pour des exemples.');
+    }
+    
+    console.log('');
+}
 
-async function downloadFile(url, dest) {
+const BINARIES_DIR = process.env.FFMPEG_BINARIES_DIR ? 
+    path.join(__dirname, '..', process.env.FFMPEG_BINARIES_DIR) : 
+    path.join(__dirname, '..', 'binaries');
+
+const DOWNLOAD_MODE = process.env.FFMPEG_DOWNLOAD_MODE || 'current';
+const DOWNLOAD_TIMEOUT = parseInt(process.env.FFMPEG_DOWNLOAD_TIMEOUT || '300000', 10);
+
+async function downloadFile(url, dest, retryCount = 0) {
+    const maxRetries = 3;
+    
     return new Promise((resolve, reject) => {
         const file = fs.createWriteStream(dest);
         const fileName = path.basename(dest);
         
-        console.log(`📥 Downloading: ${fileName}`);
-        console.log(`🔗 URL: ${url}`);
+        if (retryCount === 0) {
+            console.log(`📥 Downloading: ${fileName}`);
+            console.log(`🔗 URL: ${url}`);
+        } else {
+            console.log(`🔄 Retry ${retryCount}/${maxRetries}: ${fileName}`);
+        }
         
-        https.get(url, (response) => {
-            if (response.statusCode === 302 || response.statusCode === 301) {
+        const request = https.get(url, { timeout: DOWNLOAD_TIMEOUT }, (response) => {
+            if (response.statusCode === 302 || response.statusCode === 301 || response.statusCode === 303) {
                 console.log(`🔄 Redirecting to: ${response.headers.location}`);
                 file.destroy();
                 return downloadFile(response.headers.location, dest).then(resolve).catch(reject);
@@ -68,12 +133,44 @@ async function downloadFile(url, dest) {
             
             file.on('error', (err) => {
                 fs.unlink(dest, () => {});
-                reject(err);
+                if (retryCount < maxRetries) {
+                    console.log(`⚠️  Download error, retrying... (${retryCount + 1}/${maxRetries})`);
+                    setTimeout(() => {
+                        downloadFile(url, dest, retryCount + 1).then(resolve).catch(reject);
+                    }, 2000);
+                } else {
+                    reject(err);
+                }
             });
-            
-        }).on('error', (err) => {
+        });
+        
+        request.on('timeout', () => {
+            request.destroy();
+            file.destroy();
             fs.unlink(dest, () => {});
-            reject(err);
+            
+            if (retryCount < maxRetries) {
+                console.log(`⏰ Download timeout, retrying... (${retryCount + 1}/${maxRetries})`);
+                setTimeout(() => {
+                    downloadFile(url, dest, retryCount + 1).then(resolve).catch(reject);
+                }, 2000);
+            } else {
+                reject(new Error(`Download timeout after ${maxRetries} retries`));
+            }
+        });
+        
+        request.on('error', (err) => {
+            file.destroy();
+            fs.unlink(dest, () => {});
+            
+            if (retryCount < maxRetries) {
+                console.log(`⚠️  Network error, retrying... (${retryCount + 1}/${maxRetries})`);
+                setTimeout(() => {
+                    downloadFile(url, dest, retryCount + 1).then(resolve).catch(reject);
+                }, 2000);
+            } else {
+                reject(err);
+            }
         });
     });
 }
@@ -260,20 +357,31 @@ function findBinDirectory(rootDir) {
 }
 
 async function downloadFFmpegForPlatform(platform, arch) {
+    const destDir = path.join(BINARIES_DIR, platform, arch);
     const url = FFMPEG_URLS[platform]?.[arch];
+    
+    // Vérifier si l'URL est définie
     if (!url) {
-        console.log(`⚠️  No FFmpeg download URL available for ${platform}-${arch}`);
-        return;
+        console.log(`\n❌ SKIPPING: Aucune URL définie pour ${platform}-${arch} dans .env.ffmpeg`);
+        console.log('   Pour activer cette plateforme, ajoutez la variable correspondante dans .env.ffmpeg');
+        return 'skipped_missing_url';
+    }
+    
+    // Vérifier si les binaires existent déjà
+    if (fs.existsSync(destDir) && fs.readdirSync(destDir).length > 0) {
+        console.log(`\n✅ SKIPPING: FFmpeg for ${platform}-${arch} already exists.`);
+        console.log(`📍 Location: ${destDir}`);
+        return 'skipped_exists';
     }
     
     console.log(`\n${'='.repeat(80)}`);
-    console.log(`🚀 DOWNLOADING FFMPEG FOR ${platform.toUpperCase()}-${arch.toUpperCase()}`);
+    console.log(`🚀 TÉLÉCHARGEMENT FFMPEG POUR ${platform.toUpperCase()}-${arch.toUpperCase()}`);
     console.log(`${'='.repeat(80)}`);
+    console.log(`🔗 Source: ${url}`);
     
     const filename = url.split('/').pop();
     const downloadPath = path.join(BINARIES_DIR, 'temp', filename);
     const extractDir = path.join(BINARIES_DIR, 'temp', 'extract');
-    const destDir = path.join(BINARIES_DIR, platform, arch);
     
     console.log(`📁 Destination: ${destDir}`);
     
@@ -311,8 +419,9 @@ async function downloadFFmpegForPlatform(platform, arch) {
         // Nettoie les fichiers temporaires
         console.log(`\n🧹 CLEANING UP TEMPORARY FILES`);
         try {
-            fs.rmSync(path.join(BINARIES_DIR, 'temp'), { recursive: true, force: true });
-            console.log(`✅ Temporary files cleaned up`);
+            // fs.rmSync(path.join(BINARIES_DIR, 'temp'), { recursive: true, force: true });
+            // console.log(`✅ Temporary files cleaned up`);
+            console.log(`ℹ️  Skipping temp file cleanup for debugging purposes.`);
         } catch (error) {
             console.warn(`⚠️  Failed to clean up temp files: ${error.message}`);
         }
@@ -328,21 +437,38 @@ async function main() {
     console.log(`📅 Starting at: ${new Date().toLocaleString()}`);
     console.log(`📍 Target directory: ${BINARIES_DIR}`);
     
-    // Nettoie le répertoire binaires existant
-    if (fs.existsSync(BINARIES_DIR)) {
+    // Affiche les plateformes supportées
+    listSupportedPlatforms();
+    
+    // Nettoie le répertoire binaires existant (uniquement en mode 'all')
+    if (fs.existsSync(BINARIES_DIR) && DOWNLOAD_MODE === 'all') {
         console.log(`🧹 Cleaning existing binaries directory...`);
         fs.rmSync(BINARIES_DIR, { recursive: true, force: true });
         console.log(`✅ Existing binaries cleaned`);
     }
     
-    const platforms = [
-        { platform: 'windows', arch: 'x64' },
-        { platform: 'windows', arch: 'ia32' },
-        { platform: 'linux', arch: 'x64' },
-        { platform: 'linux', arch: 'arm64' }
-    ];
+    const currentPlatform = getCurrentPlatform();
+    console.log(`🖥️  Detected platform: ${currentPlatform.platform}-${currentPlatform.arch}`);
+    console.log(`⚙️  Download mode: ${DOWNLOAD_MODE}`);
     
-    console.log(`\n📊 Will download FFmpeg for ${platforms.length} platforms:`);
+    // Déterminer quelles plateformes télécharger
+    let platforms = [];
+    
+    if (DOWNLOAD_MODE === 'current') {
+        platforms = [currentPlatform];
+        console.log(`📍 Downloading only for current platform`);
+    } else {
+        // Mode 'all' - télécharger toutes les plateformes disponibles
+        for (const platform of Object.keys(FFMPEG_URLS)) {
+            const architectures = Object.keys(FFMPEG_URLS[platform]);
+            for (const arch of architectures) {
+                platforms.push({ platform, arch });
+            }
+        }
+        console.log(`🌍 Downloading for all supported platforms`);
+    }
+    
+    console.log(`\n📊 Will download FFmpeg for ${platforms.length} platform(s):`);
     platforms.forEach(({ platform, arch }, index) => {
         console.log(`  ${index + 1}. ${platform}-${arch}`);
     });
