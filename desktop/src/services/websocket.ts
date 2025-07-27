@@ -210,22 +210,32 @@ export class WebSocketService extends EventEmitter {
             return;
         }
 
-        // Vérifier les dépendances requises
-        const { checkFFmpegDependencies, showMissingDependenciesDialog } = await import('../utils/dependencies');
-        const { ffmpeg, ffplay, allDependenciesMet } = await checkFFmpegDependencies();
+        // Vérifier les dépendances requises avec FFmpeg embarqué
+        const { FFmpegManager } = await import('../utils/ffmpeg-manager');
+        const ffmpegManager = FFmpegManager.getInstance();
         
-        if (!allDependenciesMet) {
-            const missingDeps = [];
-            if (!ffmpeg) missingDeps.push('FFmpeg');
-            if (!ffplay) missingDeps.push('FFplay (inclus avec FFmpeg)');
+        try {
+            const { ffmpeg, ffplay, allDependenciesMet } = await ffmpegManager.checkAvailability();
             
-            showMissingDependenciesDialog(missingDeps);
+            if (!allDependenciesMet) {
+                const missingDeps = [];
+                if (!ffmpeg) missingDeps.push('FFmpeg');
+                if (!ffplay) missingDeps.push('FFplay (inclus avec FFmpeg)');
+                
+                const { showMissingDependenciesDialog } = await import('../utils/dependencies');
+                showMissingDependenciesDialog(missingDeps);
+                return;
+            }
+
+            // Utiliser ffplay embarqué pour lire le flux PCM en direct
+            // Format: PCM 16-bit, 16kHz, mono
+            this.audioPlaybackProcess = ffmpegManager.spawnFFplay(['-f', 's16le', '-ar', '16000', '-ac', '1', '-i', 'pipe:', '-nodisp', '-autoexit']);
+        } catch (error) {
+            console.error('[WebSocket] Failed to initialize embedded FFmpeg:', error);
+            const { showMissingDependenciesDialog } = await import('../utils/dependencies');
+            showMissingDependenciesDialog(['FFmpeg (binaires embarqués non trouvés)']);
             return;
         }
-
-        // Utiliser ffplay pour lire le flux PCM en direct
-        // Format: PCM 16-bit, 16kHz, mono
-        this.audioPlaybackProcess = spawn('ffplay', ['-f', 's16le', '-ar', '16000', '-ac', '1', '-i', 'pipe:', '-nodisp', '-autoexit']);
         this.isPlaying = true;
         console.log('[WebSocket] Started audio playback process with PID:', this.audioPlaybackProcess.pid);
 

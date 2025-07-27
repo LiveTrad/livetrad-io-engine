@@ -7,9 +7,12 @@ yarn-error.log*
 
 # Build output
 dist/
-dist/
 build/
 out/
+dist-electron/
+
+# FFmpeg binaries (will be downloaded during build)
+binaries/
 
 # Environment variables
 .env

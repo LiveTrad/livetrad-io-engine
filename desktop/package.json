@@ -8,7 +8,10 @@
     "build": "tsc",
     "dev": "tsc && electron .",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "watch": "tsc -w"
+    "watch": "tsc -w",
+    "download-ffmpeg": "node scripts/download-ffmpeg.js",
+    "prepare-dist": "npm run build && npm run download-ffmpeg",
+    "dist": "npm run prepare-dist && electron-builder"
   },
   "author": "",
   "license": "ISC",
@@ -16,7 +19,9 @@
     "@types/electron": "^1.4.38",
     "@types/node": "^20.11.19",
     "@types/ws": "^8.5.10",
+    "adm-zip": "^0.5.10",
     "electron": "^28.3.3",
+    "electron-builder": "^24.9.1",
     "typescript": "^5.3.3"
   },
   "dependencies": {
