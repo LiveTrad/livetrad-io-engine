@@ -229,7 +229,14 @@ export class WebSocketService extends EventEmitter {
 
             // Utiliser ffplay embarqué pour lire le flux PCM en direct
             // Format: PCM 16-bit, 16kHz, mono
-            this.audioPlaybackProcess = ffmpegManager.spawnFFplay(['-f', 's16le', '-ar', '16000', '-ac', '1', '-i', 'pipe:', '-nodisp', '-autoexit']);
+            this.audioPlaybackProcess = ffmpegManager.spawnFFplay([
+                '-f', 's16le',      // Format PCM 16-bit little-endian
+                '-ar', '16000',     // Taux d'échantillonnage 16kHz
+                '-ch_layout', 'mono', // 1 canal (mono) - format moderne
+                '-i', 'pipe:',      // Lire depuis l'entrée standard
+                '-nodisp',          // Pas de fenêtre d'affichage
+                '-autoexit'         // Quitter à la fin de la lecture
+            ]);
         } catch (error) {
             console.error('[WebSocket] Failed to initialize embedded FFmpeg:', error);
             const { showMissingDependenciesDialog } = await import('../utils/dependencies');
