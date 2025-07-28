@@ -16,6 +16,12 @@ export class WebSocketService extends EventEmitter {
     private _isPlaybackActive: boolean = false;
     private deepgramService: DeepgramService;
     private transcriptionEnabled: boolean = false;
+    
+    // Buffer audio pour lisser le flux et éviter les saccades
+    private audioBuffer: Buffer[] = [];
+    private bufferMaxSize: number = 10; // Nombre maximum de chunks en buffer
+    private bufferFlushInterval: NodeJS.Timeout | null = null;
+    private lastAudioTime: number = 0;
 
     constructor() {
         super();
@@ -98,10 +104,10 @@ export class WebSocketService extends EventEmitter {
                         console.log(`[WebSocket] Appended audio chunk to ${outputPath}`);
                         */
 
-                        // Si le playback est actif, envoyer les données audio au processus ffplay
+                        // Si le playback est actif, ajouter au buffer pour un flux lissé
                         if (this.isPlaying && this.audioPlaybackProcess) {
                             try {
-                                // Appliquer le volume et le mute côté logiciel avant d'envoyer à FFplay
+                                // Appliquer le volume et le mute côté logiciel
                                 let processedBuffer = audioBuffer;
                                 
                                 if (this.isMuted) {
@@ -117,14 +123,15 @@ export class WebSocketService extends EventEmitter {
                                     }
                                 }
                                 
-                                this.audioPlaybackProcess.stdin.write(processedBuffer);
+                                // Ajouter au buffer pour un flux lissé
+                                this.addToAudioBuffer(processedBuffer);
                                 
                                 // Log moins fréquent pour éviter le spam
-                                if (Math.random() < 0.01) { // 1% des chunks
-                                    console.log('[WebSocket] Sent audio chunk to playback process, buffer size:', processedBuffer.length);
+                                if (Math.random() < 0.005) { // 0.5% des chunks
+                                    console.log('[WebSocket] Added audio chunk to buffer, buffer size:', this.audioBuffer.length);
                                 }
                             } catch (error) {
-                                console.error('[WebSocket] Error sending audio to playback process:', error);
+                                console.error('[WebSocket] Error processing audio chunk:', error);
                             }
                         }
 
@@ -316,7 +323,7 @@ export class WebSocketService extends EventEmitter {
             }
 
             // Utiliser ffplay embarqué pour lire le flux PCM en direct
-            // Format: PCM 16-bit, 16kHz, mono
+            // Format: PCM 16-bit, 16kHz, mono avec optimisations anti-saccades
             this.audioPlaybackProcess = ffmpegManager.spawnFFplay([
                 '-f', 's16le',      // Format PCM 16-bit little-endian
                 '-ar', '16000',     // Taux d'échantillonnage 16kHz
@@ -324,12 +331,21 @@ export class WebSocketService extends EventEmitter {
                 '-i', 'pipe:0',     // Lire depuis l'entrée standard
                 '-nodisp',          // Pas de fenêtre d'affichage
                 '-autoexit',        // Quitter à la fin de la lecture
-                '-loglevel', 'info' // Logs moins verbeux
+                '-probesize', '32',  // Réduire la taille de probe pour démarrage rapide
+                '-analyzeduration', '0', // Pas d'analyse pour réduire la latence
+                '-fflags', 'nobuffer', // Pas de buffering supplémentaire
+                '-flags', 'low_delay', // Mode faible latence
+                '-strict', 'experimental', // Permettre les optimisations expérimentales
+                '-loglevel', 'error' // Logs minimaux pour réduire la charge
             ]);
             
             this._isPlaybackActive = true;
             this.isPlaying = true;
-            console.log('[WebSocket] Playback started successfully');
+            
+            // Démarrer le système de buffering pour un flux lissé
+            this.startAudioBuffering();
+            
+            console.log('[WebSocket] Playback started successfully with audio buffering');
 
             // Configurer la gestion des erreurs
             this.audioPlaybackProcess.stderr.on('data', (data: Buffer) => {
@@ -363,6 +379,72 @@ export class WebSocketService extends EventEmitter {
         console.log('[WebSocket] Started audio playback process with PID:', this.audioPlaybackProcess.pid);
 
         // Configuration des gestionnaires d'événements déjà effectuée plus haut
+    }
+    
+    /**
+     * Ajoute un chunk audio au buffer pour un flux lissé
+     */
+    private addToAudioBuffer(audioChunk: Buffer): void {
+        // Ajouter le chunk au buffer
+        this.audioBuffer.push(audioChunk);
+        
+        // Limiter la taille du buffer pour éviter l'accumulation excessive
+        if (this.audioBuffer.length > this.bufferMaxSize) {
+            // Supprimer les anciens chunks si le buffer est plein
+            this.audioBuffer.shift();
+        }
+        
+        this.lastAudioTime = Date.now();
+    }
+    
+    /**
+     * Démarre le système de buffering audio
+     */
+    private startAudioBuffering(): void {
+        if (this.bufferFlushInterval) {
+            clearInterval(this.bufferFlushInterval);
+        }
+        
+        // Flush le buffer toutes les 10ms pour maintenir un flux régulier
+        this.bufferFlushInterval = setInterval(() => {
+            this.flushAudioBuffer();
+        }, 10);
+        
+        console.log('[WebSocket] Audio buffering started');
+    }
+    
+    /**
+     * Arrête le système de buffering audio
+     */
+    private stopAudioBuffering(): void {
+        if (this.bufferFlushInterval) {
+            clearInterval(this.bufferFlushInterval);
+            this.bufferFlushInterval = null;
+        }
+        
+        // Vider le buffer
+        this.audioBuffer = [];
+        
+        console.log('[WebSocket] Audio buffering stopped');
+    }
+    
+    /**
+     * Envoie les chunks du buffer à FFplay de manière régulière
+     */
+    private flushAudioBuffer(): void {
+        if (!this.audioPlaybackProcess || this.audioBuffer.length === 0) {
+            return;
+        }
+        
+        try {
+            // Envoyer un chunk à la fois pour maintenir un flux régulier
+            const chunk = this.audioBuffer.shift();
+            if (chunk) {
+                this.audioPlaybackProcess.stdin.write(chunk);
+            }
+        } catch (error) {
+            console.error('[WebSocket] Error flushing audio buffer:', error);
+        }
     }
 
     /**
