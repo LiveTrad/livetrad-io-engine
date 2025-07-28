@@ -3,28 +3,56 @@
 <head>
     <title>LiveTrad Desktop</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', 'Menlo', 'Consolas', monospace;
             margin: 0;
-            padding: 20px;
-            background: #f5f5f5;
+            padding: 0;
+            background: linear-gradient(135deg, #0c0c0c 0%, #1a1a1a 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            font-size: 13px;
+            line-height: 1.5;
         }
+        
         .container {
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .status {
-            padding: 15px;
+            background: rgba(20, 20, 20, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            padding: 32px;
+            margin-top: 20px;
             margin-bottom: 20px;
-            border-radius: 4px;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
         }
+        
+        h1 {
+            color: #00ff88;
+            text-align: center;
+            margin-bottom: 32px;
+            font-size: 24px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+        }
+        
+        .status {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            font-weight: 500;
+            text-align: center;
+            font-size: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.3);
+            font-family: inherit;
+        }
+        
         .status::before {
             content: '';
             display: inline-block;
@@ -33,78 +61,222 @@
             border-radius: 50%;
             margin-right: 10px;
         }
+        
         .connected {
-            background: #e8f5e9;
-            color: #2e7d32;
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.1) 0%, rgba(0, 200, 100, 0.1) 100%);
+            color: #00ff88;
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.1);
         }
+        
         .connected::before {
             background: #2e7d32;
         }
+        
         .disconnected {
-            background: #ffebee;
-            color: #c62828;
+            background: linear-gradient(135deg, rgba(255, 64, 64, 0.1) 0%, rgba(200, 0, 0, 0.1) 100%);
+            color: #ff6b6b;
+            border: 1px solid rgba(255, 64, 64, 0.3);
+            box-shadow: 0 0 20px rgba(255, 64, 64, 0.1);
         }
+        
         .disconnected::before {
             background: #c62828;
         }
+        
         #stats {
             display: none;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 4px;
-            margin-bottom: 20px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 8px;
+            margin-bottom: 24px;
+            backdrop-filter: blur(5px);
         }
+        
+        #stats h3 {
+            color: #00ff88;
+            margin-top: 0;
+            margin-bottom: 16px;
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
         .stat-item {
-            margin-bottom: 10px;
-        }
-        #audioMonitor {
-            margin-top: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 4px;
-        }
-        #audioLevel {
-            width: 100%;
-            height: 20px;
-            background: #e0e0e0;
-            border-radius: 10px;
-            overflow: hidden;
-            margin-top: 10px;
-        }
-        #audioLevelBar {
-            width: 0%;
-            height: 100%;
-            background: linear-gradient(90deg, #4CAF50, #8BC34A);
-            transition: width 0.1s ease;
-        }
-        #streamingStatus {
-            margin-top: 10px;
-            font-size: 0.9em;
-            color: #666;
-        }
-        .audio-stats {
+            margin-bottom: 12px;
+            padding: 10px 14px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 12px;
             display: flex;
             justify-content: space-between;
-            margin-top: 10px;
-            font-size: 0.9em;
-            color: #666;
+            align-items: center;
         }
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            background: #4CAF50;
-            color: #fff;
-            cursor: pointer;
+        
+        .stat-item strong {
+            color: #00ff88;
+            font-weight: 600;
+            min-width: 120px;
         }
-        .btn:hover {
-            background: #3e8e41;
+        
+        .stat-item span {
+            color: #ffffff;
+            font-family: inherit;
         }
-        .transcription-section {
+        
+        .section {
+            margin-bottom: 24px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(5px);
+        }
+        
+        #audioMonitor {
             margin-top: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 4px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(5px);
+        }
+        
+        #audioLevel {
+            width: 100%;
+            height: 24px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .audio-level-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88 0%, #ffaa00 50%, #ff4444 80%, #ff0066 100%);
+            width: 0%;
+            transition: width 0.1s ease;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
+        }
+        
+        #streamingStatus {
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            font-size: 12px;
+            color: #ffffff;
+            text-align: center;
+            font-weight: 500;
+        }
+        
+        .audio-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 16px;
+            font-size: 12px;
+        }
+        
+        .audio-stats span {
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-family: inherit;
+            text-align: center;
+        }
+        
+        #muteButton {
+            padding: 8px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            cursor: pointer;
+            background: rgba(0, 0, 0, 0.3);
+            color: #e0e0e0;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        #muteButton:hover {
+            background: rgba(0, 0, 0, 0.5);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 255, 136, 0.1);
+            color: #00ff88;
+            cursor: pointer;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        
+        .btn:hover {
+            background: rgba(0, 255, 136, 0.2);
+            border-color: rgba(0, 255, 136, 0.4);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 255, 136, 0.2);
+        }
+        
+        .btn.active {
+            background: rgba(0, 255, 136, 0.3);
+            border-color: #00ff88;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .transcription-section {
+            margin-top: 24px;
+            padding: 24px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .transcription-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .transcription-title {
+            color: #00ff88;
+            font-size: 16px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 0;
+        }
+        
+        .transcription-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
         }
         .transcription-controls {
             margin-bottom: 15px;

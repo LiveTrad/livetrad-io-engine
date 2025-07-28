@@ -322,21 +322,32 @@ export class WebSocketService extends EventEmitter {
                 return;
             }
 
-            // Utiliser ffplay embarqué pour lire le flux PCM en direct
-            // Format: PCM 16-bit, 16kHz, mono avec optimisations anti-saccades
+            // Utiliser ffplay embarqué avec filtres audio professionnels pour une qualité optimale
+            // Format: PCM 16-bit, 16kHz, mono avec amélioration de qualité
+            const audioFilters = [
+                'highpass=f=80',        // Filtre passe-haut pour éliminer les basses fréquences parasites
+                'lowpass=f=7500',       // Filtre passe-bas pour éliminer les hautes fréquences parasites
+                'dynaudnorm=f=150:g=15:p=0.9:m=10:r=0.5:n=1', // Normalisation dynamique avancée
+                'acompressor=threshold=0.089:ratio=9:attack=200:release=1000', // Compresseur audio professionnel
+                'equalizer=f=1000:width_type=h:width=200:g=2', // Boost léger des médiums (voix)
+                'equalizer=f=3000:width_type=h:width=500:g=1.5', // Clarté des aigus
+                'volume=1.2'            // Amplification finale pour compenser les filtres
+            ].join(',');
+            
             this.audioPlaybackProcess = ffmpegManager.spawnFFplay([
-                '-f', 's16le',      // Format PCM 16-bit little-endian
-                '-ar', '16000',     // Taux d'échantillonnage 16kHz
-                '-ch_layout', 'mono', // 1 canal (mono) - format moderne
-                '-i', 'pipe:0',     // Lire depuis l'entrée standard
-                '-nodisp',          // Pas de fenêtre d'affichage
-                '-autoexit',        // Quitter à la fin de la lecture
-                '-probesize', '32',  // Réduire la taille de probe pour démarrage rapide
+                '-f', 's16le',          // Format PCM 16-bit little-endian
+                '-ar', '16000',         // Taux d'échantillonnage 16kHz
+                '-ch_layout', 'mono',   // 1 canal (mono) - format moderne
+                '-i', 'pipe:0',         // Lire depuis l'entrée standard
+                '-af', audioFilters,    // Appliquer les filtres audio professionnels
+                '-nodisp',              // Pas de fenêtre d'affichage
+                '-autoexit',            // Quitter à la fin de la lecture
+                '-probesize', '32',     // Démarrage rapide
                 '-analyzeduration', '0', // Pas d'analyse pour réduire la latence
-                '-fflags', 'nobuffer', // Pas de buffering supplémentaire
-                '-flags', 'low_delay', // Mode faible latence
-                '-strict', 'experimental', // Permettre les optimisations expérimentales
-                '-loglevel', 'error' // Logs minimaux pour réduire la charge
+                '-fflags', 'nobuffer',  // Pas de buffering supplémentaire
+                '-flags', 'low_delay',  // Mode faible latence
+                '-strict', 'experimental', // Optimisations expérimentales
+                '-loglevel', 'error'    // Logs minimaux
             ]);
             
             this._isPlaybackActive = true;
