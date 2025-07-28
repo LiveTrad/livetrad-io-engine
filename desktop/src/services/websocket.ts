@@ -101,9 +101,28 @@ export class WebSocketService extends EventEmitter {
                         // Si le playback est actif, envoyer les données audio au processus ffplay
                         if (this.isPlaying && this.audioPlaybackProcess) {
                             try {
-                                console.log('[WebSocket] Sending audio chunk to playback process, buffer size:', audioBuffer.length);
-                                this.audioPlaybackProcess.stdin.write(audioBuffer);
-                                console.log('[WebSocket] Sent audio chunk to playback process');
+                                // Appliquer le volume et le mute côté logiciel avant d'envoyer à FFplay
+                                let processedBuffer = audioBuffer;
+                                
+                                if (this.isMuted) {
+                                    // Mute : remplacer toutes les valeurs par 0
+                                    processedBuffer = Buffer.alloc(audioBuffer.length, 0);
+                                } else if (this.currentVolume !== 1.0) {
+                                    // Ajuster le volume : multiplier chaque échantillon par le facteur de volume
+                                    processedBuffer = Buffer.from(audioBuffer);
+                                    const int16Array = new Int16Array(processedBuffer.buffer, processedBuffer.byteOffset, processedBuffer.length / 2);
+                                    
+                                    for (let i = 0; i < int16Array.length; i++) {
+                                        int16Array[i] = Math.round(int16Array[i] * this.currentVolume);
+                                    }
+                                }
+                                
+                                this.audioPlaybackProcess.stdin.write(processedBuffer);
+                                
+                                // Log moins fréquent pour éviter le spam
+                                if (Math.random() < 0.01) { // 1% des chunks
+                                    console.log('[WebSocket] Sent audio chunk to playback process, buffer size:', processedBuffer.length);
+                                }
                             } catch (error) {
                                 console.error('[WebSocket] Error sending audio to playback process:', error);
                             }
@@ -215,14 +234,7 @@ export class WebSocketService extends EventEmitter {
             }
 
             this.currentVolume = volume;
-            
-            if (this.audioPlaybackProcess && !this.audioPlaybackProcess.killed) {
-                // FFplay utilise une échelle de 0 à 100 pour le volume
-                const ffplayVolume = Math.round(volume * 100);
-                this.audioPlaybackProcess.stdin.write(`volume ${ffplayVolume}\n`);
-                console.log(`[WebSocket] Volume set to ${volume * 100}%`);
-            }
-            
+            console.log(`[WebSocket] Volume set to ${Math.round(volume * 100)}%`);
             return true;
         } catch (error) {
             console.error('[WebSocket] Error setting volume:', error);
@@ -233,12 +245,7 @@ export class WebSocketService extends EventEmitter {
     public async toggleMute(): Promise<boolean> {
         try {
             this.isMuted = !this.isMuted;
-            
-            if (this.audioPlaybackProcess && !this.audioPlaybackProcess.killed) {
-                const volume = this.isMuted ? 0 : this.currentVolume;
-                return this.setVolume(volume);
-            }
-            
+            console.log(`[WebSocket] Audio ${this.isMuted ? 'muted' : 'unmuted'}`);
             return true;
         } catch (error) {
             console.error('[WebSocket] Error toggling mute:', error);
@@ -317,8 +324,7 @@ export class WebSocketService extends EventEmitter {
                 '-i', 'pipe:0',     // Lire depuis l'entrée standard
                 '-nodisp',          // Pas de fenêtre d'affichage
                 '-autoexit',        // Quitter à la fin de la lecture
-                '-volume', Math.round(this.currentVolume * 100).toString(),  // Volume initial
-                '-loglevel', 'debug' // Activer les logs de débogage
+                '-loglevel', 'info' // Logs moins verbeux
             ]);
             
             this._isPlaybackActive = true;
@@ -359,7 +365,120 @@ export class WebSocketService extends EventEmitter {
         // Configuration des gestionnaires d'événements déjà effectuée plus haut
     }
 
-    // Les méthodes de contrôle du playback ont été déplacées plus haut dans le fichier
+    /**
+     * Redémarre le processus FFplay avec les nouveaux paramètres de volume
+     */
+    private async restartPlaybackWithNewVolume(): Promise<void> {
+        if (!this._isPlaybackActive) {
+            return;
+        }
+        
+        console.log('[WebSocket] Restarting playback with new volume settings...');
+        
+        // Arrêter le processus actuel sans changer l'état _isPlaybackActive
+        if (this.audioPlaybackProcess && !this.audioPlaybackProcess.killed) {
+            this.audioPlaybackProcess.kill('SIGTERM');
+            this.audioPlaybackProcess = null;
+            this.isPlaying = false;
+        }
+        
+        // Redémarrer avec les nouveaux paramètres
+        await this.startPlaybackInternal();
+    }
+    
+    /**
+     * Génère le filtre audio pour le volume et le mute
+     */
+    private getVolumeFilter(): string | null {
+        if (this.isMuted) {
+            // Mute complet : volume à 0
+            return 'volume=0';
+        } else if (this.currentVolume !== 1.0) {
+            // Volume ajusté : utiliser le niveau spécifié
+            return `volume=${this.currentVolume}`;
+        }
+        
+        // Volume normal (1.0) : pas de filtre nécessaire
+        return null;
+    }
+    
+    /**
+     * Méthode interne pour démarrer le playback sans vérifications d'état
+     */
+    private async startPlaybackInternal(): Promise<void> {
+        // Vérifier les dépendances requises avec FFmpeg embarqué
+        const { FFmpegManager } = await import('../utils/ffmpeg-manager');
+        const ffmpegManager = FFmpegManager.getInstance();
+        
+        try {
+            const { ffmpeg, ffplay, allDependenciesMet } = await ffmpegManager.checkAvailability();
+            
+            if (!allDependenciesMet) {
+                const missingDeps = [];
+                if (!ffmpeg) missingDeps.push('FFmpeg');
+                if (!ffplay) missingDeps.push('FFplay (inclus avec FFmpeg)');
+                
+                const { showMissingDependenciesDialog } = await import('../utils/dependencies');
+                showMissingDependenciesDialog(missingDeps);
+                return;
+            }
+
+            // Calculer le filtre audio pour le volume et le mute
+            const volumeFilter = this.getVolumeFilter();
+            
+            // Utiliser ffplay embarqué pour lire le flux PCM en direct
+            // Format: PCM 16-bit, 16kHz, mono
+            const ffplayArgs = [
+                '-f', 's16le',      // Format PCM 16-bit little-endian
+                '-ar', '16000',     // Taux d'échantillonnage 16kHz
+                '-ch_layout', 'mono', // 1 canal (mono) - format moderne
+                '-i', 'pipe:0',     // Lire depuis l'entrée standard
+                '-nodisp',          // Pas de fenêtre d'affichage
+                '-autoexit',        // Quitter à la fin de la lecture
+                '-loglevel', 'info' // Logs moins verbeux
+            ];
+            
+            // Ajouter le filtre audio si nécessaire
+            if (volumeFilter) {
+                ffplayArgs.push('-af', volumeFilter);
+                console.log(`[WebSocket] Using audio filter: ${volumeFilter}`);
+            }
+            
+            this.audioPlaybackProcess = ffmpegManager.spawnFFplay(ffplayArgs);
+            
+            this.isPlaying = true;
+            console.log('[WebSocket] Playback restarted with new volume settings');
+
+            // Configurer la gestion des erreurs
+            this.audioPlaybackProcess.stderr.on('data', (data: Buffer) => {
+                const output = data.toString().trim();
+                if (output && !output.includes('size=') && !output.includes('time=')) {
+                    console.log(`[FFplay stderr] ${output}`);
+                }
+            });
+
+            // Gérer la fin du processus
+            this.audioPlaybackProcess.on('close', (code: number) => {
+                console.log(`[FFplay] Process exited with code ${code}`);
+                this.audioPlaybackProcess = null;
+                this.isPlaying = false;
+                this._isPlaybackActive = false;
+            });
+            
+            // Gestion des erreurs
+            this.audioPlaybackProcess.on('error', (error: Error) => {
+                console.error('[FFplay] Process error:', error);
+                this.audioPlaybackProcess = null;
+                this.isPlaying = false;
+                this._isPlaybackActive = false;
+            });
+        } catch (error) {
+            console.error('[WebSocket] Failed to initialize embedded FFmpeg:', error);
+            const { showMissingDependenciesDialog } = await import('../utils/dependencies');
+            showMissingDependenciesDialog(['FFmpeg (binaires embarqués non trouvés)']);
+            return;
+        }
+    }
 
     private setupDeepgramListeners(): void {
         this.deepgramService.on('transcript', (transcriptionData: TranscriptionData) => {
