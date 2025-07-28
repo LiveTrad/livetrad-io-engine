@@ -212,10 +212,14 @@
                 <span id="averageLevel">Average level: 0 dB</span>
             </div>
             <div id="streamingStatus">No audio streaming</div>
-            <div id="playbackControl">
-                <input type="checkbox" id="togglePlaybackCheckbox" />
-                <label for="togglePlaybackCheckbox">Enable Audio Playback</label>
-                <div id="playbackStatus">Playback: OFF</div>
+            <div id="volumeControl" style="margin-top: 15px;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
+                    <button id="muteButton" style="padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer; background-color: #f0f0f0;">
+                        🔇 Mute
+                    </button>
+                    <span id="volumeValue" style="min-width: 50px; text-align: right;">80%</span>
+                </div>
+                <input type="range" id="volumeSlider" min="0" max="100" value="80" style="width: 100%;" />
             </div>
         </div>
 

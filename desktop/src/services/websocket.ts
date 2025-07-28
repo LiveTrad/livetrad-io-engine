@@ -11,6 +11,9 @@ export class WebSocketService extends EventEmitter {
     private audioStats: any = null;
     private audioPlaybackProcess: any = null;
     private isPlaying: boolean = false;
+    public currentVolume: number = 0.8; // Volume par défaut (80%)
+    public isMuted: boolean = false;
+    private _isPlaybackActive: boolean = false;
     private deepgramService: DeepgramService;
     private transcriptionEnabled: boolean = false;
 
@@ -204,8 +207,86 @@ export class WebSocketService extends EventEmitter {
         }
     }
 
+    public async setVolume(volume: number): Promise<boolean> {
+        try {
+            if (volume < 0 || volume > 1) {
+                console.error('[WebSocket] Volume must be between 0 and 1');
+                return false;
+            }
+
+            this.currentVolume = volume;
+            
+            if (this.audioPlaybackProcess && !this.audioPlaybackProcess.killed) {
+                // FFplay utilise une échelle de 0 à 100 pour le volume
+                const ffplayVolume = Math.round(volume * 100);
+                this.audioPlaybackProcess.stdin.write(`volume ${ffplayVolume}\n`);
+                console.log(`[WebSocket] Volume set to ${volume * 100}%`);
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('[WebSocket] Error setting volume:', error);
+            return false;
+        }
+    }
+
+    public async toggleMute(): Promise<boolean> {
+        try {
+            this.isMuted = !this.isMuted;
+            
+            if (this.audioPlaybackProcess && !this.audioPlaybackProcess.killed) {
+                const volume = this.isMuted ? 0 : this.currentVolume;
+                return this.setVolume(volume);
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('[WebSocket] Error toggling mute:', error);
+            return false;
+        }
+    }
+
+    public isPlaybackActive(): boolean {
+        return this._isPlaybackActive;
+    }
+
+    public async togglePlayback(): Promise<boolean> {
+        try {
+            if (this._isPlaybackActive) {
+                await this.stopPlayback();
+            } else {
+                await this.startPlayback();
+            }
+            return this._isPlaybackActive;
+        } catch (error) {
+            console.error('[WebSocket] Error toggling playback:', error);
+            return false;
+        }
+    }
+
+    public async stopPlayback(): Promise<void> {
+        if (!this._isPlaybackActive) {
+            console.log('[WebSocket] Playback not active, nothing to stop');
+            return;
+        }
+
+        try {
+            if (this.audioPlaybackProcess) {
+                if (!this.audioPlaybackProcess.killed) {
+                    this.audioPlaybackProcess.kill('SIGTERM');
+                }
+                this.audioPlaybackProcess = null;
+            }
+            this._isPlaybackActive = false;
+            console.log('[WebSocket] Playback stopped');
+        } catch (error) {
+            console.error('[WebSocket] Error stopping playback:', error);
+            throw error;
+        }
+    }
+
     public async startPlayback(): Promise<void> {
-        if (this.isPlaying) {
+        if (this._isPlaybackActive) {
             console.log('[WebSocket] Audio playback already running');
             return;
         }
@@ -233,57 +314,52 @@ export class WebSocketService extends EventEmitter {
                 '-f', 's16le',      // Format PCM 16-bit little-endian
                 '-ar', '16000',     // Taux d'échantillonnage 16kHz
                 '-ch_layout', 'mono', // 1 canal (mono) - format moderne
-                '-i', 'pipe:',      // Lire depuis l'entrée standard
+                '-i', 'pipe:0',     // Lire depuis l'entrée standard
                 '-nodisp',          // Pas de fenêtre d'affichage
-                '-autoexit'         // Quitter à la fin de la lecture
+                '-autoexit',        // Quitter à la fin de la lecture
+                '-volume', Math.round(this.currentVolume * 100).toString(),  // Volume initial
+                '-loglevel', 'debug' // Activer les logs de débogage
             ]);
+            
+            this._isPlaybackActive = true;
+            this.isPlaying = true;
+            console.log('[WebSocket] Playback started successfully');
+
+            // Configurer la gestion des erreurs
+            this.audioPlaybackProcess.stderr.on('data', (data: Buffer) => {
+                const output = data.toString().trim();
+                if (output) {
+                    console.log(`[FFplay stderr] ${output}`);
+                }
+            });
+
+            // Gérer la fin du processus
+            this.audioPlaybackProcess.on('close', (code: number) => {
+                console.log(`[FFplay] Process exited with code ${code}`);
+                this.audioPlaybackProcess = null;
+                this.isPlaying = false;
+                this._isPlaybackActive = false;
+            });
+            
+            // Gestion des erreurs
+            this.audioPlaybackProcess.on('error', (error: Error) => {
+                console.error('[FFplay] Process error:', error);
+                this.audioPlaybackProcess = null;
+                this.isPlaying = false;
+                this._isPlaybackActive = false;
+            });
         } catch (error) {
             console.error('[WebSocket] Failed to initialize embedded FFmpeg:', error);
             const { showMissingDependenciesDialog } = await import('../utils/dependencies');
             showMissingDependenciesDialog(['FFmpeg (binaires embarqués non trouvés)']);
             return;
         }
-        this.isPlaying = true;
         console.log('[WebSocket] Started audio playback process with PID:', this.audioPlaybackProcess.pid);
 
-        this.audioPlaybackProcess.stdout.on('data', (data: Buffer) => {
-            console.log(`[ffplay stdout] ${data.toString()}`);
-        });
-
-        this.audioPlaybackProcess.stderr.on('data', (data: Buffer) => {
-            console.error(`[ffplay stderr] ${data.toString()}`);
-        });
-
-        this.audioPlaybackProcess.on('close', (code: number) => {
-            console.log(`[ffplay] Process exited with code ${code}`);
-            this.isPlaying = false;
-            this.audioPlaybackProcess = null;
-        });
+        // Configuration des gestionnaires d'événements déjà effectuée plus haut
     }
 
-    public stopPlayback(): void {
-        if (!this.isPlaying || !this.audioPlaybackProcess) {
-            console.log('[WebSocket] No audio playback process to stop');
-            return;
-        }
-
-        this.audioPlaybackProcess.kill();
-        this.isPlaying = false;
-        this.audioPlaybackProcess = null;
-        console.log('[WebSocket] Stopped audio playback process');
-    }
-
-    public isPlaybackActive(): boolean {
-        return this.isPlaying;
-    }
-
-    public togglePlayback(): void {
-        if (this.isPlaying) {
-            this.stopPlayback();
-        } else {
-            this.startPlayback();
-        }
-    }
+    // Les méthodes de contrôle du playback ont été déplacées plus haut dans le fichier
 
     private setupDeepgramListeners(): void {
         this.deepgramService.on('transcript', (transcriptionData: TranscriptionData) => {

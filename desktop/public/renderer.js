@@ -1,7 +1,9 @@
 // Audio monitoring state
 let audioChunksCount = 0;
 let lastAudioLevel = 0;
-let isPlaying = false;
+let isPlaying = true; // Par défaut à true pour le démarrage automatique
+let isMuted = false;
+let volume = 0.8; // Volume par défaut à 80%
 
 // Transcription state
 let isTranscriptionActive = false;
@@ -112,42 +114,88 @@ setInterval(() => {
 }, 1000);
 
 // Éléments DOM
-const togglePlaybackCheckbox = document.getElementById('togglePlaybackCheckbox');
-const playbackStatus = document.getElementById('playbackStatus');
+const volumeSlider = document.getElementById('volumeSlider');
+const muteButton = document.getElementById('muteButton');
+const volumeValue = document.getElementById('volumeValue');
 
-// Gestionnaire d'événements pour la checkbox
-togglePlaybackCheckbox.addEventListener('change', async () => {
+// Activer le playback au démarrage
+async function initializePlayback() {
     try {
-        const result = await window.api.invoke('toggle-playback');
-        if (result.success) {
-            isPlaying = result.isPlaying;
-            togglePlaybackCheckbox.checked = isPlaying;
-            playbackStatus.textContent = `Playback: ${isPlaying ? 'ON' : 'OFF'}`;
-            playbackStatus.style.color = isPlaying ? '#4CAF50' : '#F44336';
-            console.log(`Playback ${isPlaying ? 'started' : 'stopped'}`);
-        } else {
-            console.error('Failed to toggle playback:', result.error);
-        }
-    } catch (error) {
-        console.error('Error toggling playback:', error);
-    }
-});
-
-// Mettre à jour l'état de la checkbox au démarrage
-async function updatePlaybackCheckboxState() {
-    try {
+        // Activer le playback si ce n'est pas déjà fait
         const status = await window.api.invoke('get-playback-status');
-        isPlaying = status.isPlaying;
-        togglePlaybackCheckbox.checked = isPlaying;
-        playbackStatus.textContent = `Playback: ${isPlaying ? 'ON' : 'OFF'}`;
-        playbackStatus.style.color = isPlaying ? '#4CAF50' : '#F44336';
+        if (!status.isPlaying) {
+            const result = await window.api.invoke('toggle-playback');
+            if (result.success) {
+                isPlaying = true;
+                console.log('Playback started automatically');
+            }
+        } else {
+            isPlaying = true;
+        }
+        updateVolumeDisplay();
     } catch (error) {
-        console.error('Error getting playback status:', error);
+        console.error('Error initializing playback:', error);
     }
 }
 
-// Appeler au démarrage
-updatePlaybackCheckboxState();
+// Gestionnaire d'événements pour le bouton mute
+muteButton.addEventListener('click', async () => {
+    try {
+        isMuted = !isMuted;
+        updateVolumeDisplay();
+        
+        // Mettre à jour le volume dans le processus principal
+        const volumeToSet = isMuted ? 0 : volume;
+        await window.api.invoke('set-volume', { volume: volumeToSet });
+        
+        console.log(`Audio ${isMuted ? 'muted' : 'unmuted'}`);
+    } catch (error) {
+        console.error('Error toggling mute:', error);
+    }
+});
+
+// Gestionnaire d'événements pour le slider de volume
+volumeSlider.addEventListener('input', async () => {
+    try {
+        volume = parseFloat(volumeSlider.value) / 100;
+        
+        // Si on règle le volume alors qu'on est en mode muet, on désactive le muet
+        if (isMuted && volume > 0) {
+            isMuted = false;
+        }
+        
+        // Mettre à jour le volume dans le processus principal
+        const volumeToSet = isMuted ? 0 : volume;
+        await window.api.invoke('set-volume', { volume: volumeToSet });
+        
+        updateVolumeDisplay();
+        console.log(`Volume set to ${Math.round(volume * 100)}%`);
+    } catch (error) {
+        console.error('Error setting volume:', error);
+    }
+});
+
+// Mettre à jour l'affichage du volume
+function updateVolumeDisplay() {
+    const volumePercent = Math.round(volume * 100);
+    volumeValue.textContent = `${volumePercent}%`;
+    volumeSlider.value = volumePercent;
+    
+    // Mettre à jour le bouton mute
+    if (isMuted || volume === 0) {
+        muteButton.textContent = '🔇 Unmute';
+        muteButton.style.backgroundColor = '#ffeb3b';
+        volumeValue.textContent = 'Muted';
+    } else {
+        muteButton.textContent = '🔊 Mute';
+        muteButton.style.backgroundColor = '';
+    }
+}
+
+// Initialiser le playback au démarrage
+document.addEventListener('DOMContentLoaded', () => {
+    initializePlayback();
+});
 
 // Transcription elements
 const toggleTranscriptionCheckbox = document.getElementById('toggleTranscriptionCheckbox');

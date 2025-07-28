@@ -28,6 +28,26 @@ class LiveTradApp {
             return { isPlaying: this.wsService.isPlaybackActive() };
         });
 
+        // Gestion du volume
+        ipcMain.handle('set-volume', async (_, { volume }) => {
+            const success = await this.wsService.setVolume(volume);
+            return { success };
+        });
+
+        // Gestion du mute
+        ipcMain.handle('toggle-mute', async () => {
+            const success = await this.wsService.toggleMute();
+            return { success, isMuted: this.wsService.isMuted };
+        });
+
+        // Obtenir l'état actuel du volume
+        ipcMain.handle('get-volume', () => {
+            return { 
+                volume: this.wsService.currentVolume,
+                isMuted: this.wsService.isMuted 
+            };
+        });
+
         // Deepgram transcription handlers
         ipcMain.handle('toggle-transcription', () => {
             this.wsService.toggleTranscription();
