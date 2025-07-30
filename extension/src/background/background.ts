@@ -1,6 +1,7 @@
 import { AudioCaptureState, MessageType, ResponseType, TabInfo } from '../types';
 import { WebSocketService } from '../services/websocket';
 import { AudioCaptureService } from '../services/audioCaptureService';
+import { WebRTCAudioCaptureService } from '../services/webrtcAudioCaptureService';
 
 class AudioCaptureManager {
   private state: AudioCaptureState = {
@@ -10,9 +11,12 @@ class AudioCaptureManager {
   };
 
   private audioCaptureService: AudioCaptureService;
+  private webrtcAudioCaptureService: WebRTCAudioCaptureService;
+  private useWebRTC: boolean = false; // Toggle for WebRTC vs WebSocket
 
   constructor() {
     this.audioCaptureService = new AudioCaptureService();
+    this.webrtcAudioCaptureService = new WebRTCAudioCaptureService();
     this.initializeListeners();
   }
 
@@ -48,14 +52,24 @@ class AudioCaptureManager {
               if (!message.stream) {
                 response = { success: false, error: 'No stream provided' };
               } else {
-                response = await this.audioCaptureService.startStreaming(message.stream, message.tabId);
-                this.state = this.audioCaptureService.getState();
+                if (this.useWebRTC) {
+                  response = await this.webrtcAudioCaptureService.startStreaming(message.stream, message.tabId);
+                  this.state = this.webrtcAudioCaptureService.getState();
+                } else {
+                  response = await this.audioCaptureService.startStreaming(message.stream, message.tabId);
+                  this.state = this.audioCaptureService.getState();
+                }
                 this.notifyStreamingStateChanged();
               }
               break;
             case 'STOP_STREAMING':
-              response = await this.audioCaptureService.stopStreaming(message.tabId);
-              this.state = this.audioCaptureService.getState();
+              if (this.useWebRTC) {
+                response = await this.webrtcAudioCaptureService.stopStreaming(message.tabId);
+                this.state = this.webrtcAudioCaptureService.getState();
+              } else {
+                response = await this.audioCaptureService.stopStreaming(message.tabId);
+                this.state = this.audioCaptureService.getState();
+              }
               this.notifyStreamingStateChanged();
               break;
             case 'GET_STREAMING_STATE':
@@ -66,11 +80,23 @@ class AudioCaptureManager {
               response = { success: true, tabs };
               break;
             case 'CONNECT_DESKTOP':
-              response = await this.audioCaptureService.connectToDesktop();
+              if (this.useWebRTC) {
+                response = await this.webrtcAudioCaptureService.connectToDesktop();
+              } else {
+                response = await this.audioCaptureService.connectToDesktop();
+              }
               break;
             case 'DISCONNECT_DESKTOP':
-              this.audioCaptureService.disconnectFromDesktop();
+              if (this.useWebRTC) {
+                this.webrtcAudioCaptureService.disconnectFromDesktop();
+              } else {
+                this.audioCaptureService.disconnectFromDesktop();
+              }
               response = { success: true };
+              break;
+            case 'TOGGLE_WEBRTC':
+              this.useWebRTC = !this.useWebRTC;
+              response = { success: true, data: { useWebRTC: this.useWebRTC } };
               break;
             default:
               response = { success: false, error: 'Unknown message type' };

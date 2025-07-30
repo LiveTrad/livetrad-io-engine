@@ -1,15 +1,19 @@
 import { app, ipcMain } from 'electron';
 import { MainWindow } from './window/main-window';
 import { WebSocketService } from './services/websocket';
+import { WebRTCService } from './services/webrtc';
 import path from 'path';
 
 class LiveTradApp {
     private mainWindow: MainWindow;
     private wsService: WebSocketService;
+    private webrtcService: WebRTCService;
+    private useWebRTC: boolean = false; // Toggle for WebRTC vs WebSocket
 
     constructor() {
         this.mainWindow = new MainWindow();
         this.wsService = new WebSocketService();
+        this.webrtcService = new WebRTCService();
         this.initApp();
         this.setupIPC();
     }
@@ -67,6 +71,11 @@ class LiveTradApp {
             this.mainWindow.getWindow()!.webContents.send('audio-stats', stats);
         });
 
+        // Listen for WebRTC connection changes
+        this.webrtcService.on('connection-change', (data) => {
+            this.mainWindow.getWindow()!.webContents.send('webrtc-connection-change', data);
+        });
+
         // Deepgram event handlers
         this.wsService.onTranscription((transcriptionData) => {
             this.mainWindow.getWindow()!.webContents.send('transcription', transcriptionData);
@@ -89,6 +98,7 @@ class LiveTradApp {
         app.on('ready', () => {
             this.mainWindow.create();
             this.wsService.init();
+            this.webrtcService.init();
         });
 
         app.on('window-all-closed', () => {
