@@ -5,6 +5,11 @@ let isPlaying = true; // Par défaut à true pour le démarrage automatique
 let isMuted = false;
 let volume = 0.8; // Volume par défaut à 80%
 
+// Audio context et visualisation
+let audioContext;
+let audioVisualizer;
+let audioStream;
+
 // Transcription state
 let isTranscriptionActive = false;
 let transcriptionHistory = [];
@@ -43,11 +48,60 @@ function updateStatus(isConnected, details = {}) {
     }
 }
 
+// Initialize audio context and visualizer
+async function initAudioVisualization() {
+    try {
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        
+        if (audioContext.state === 'suspended') {
+            await audioContext.resume();
+        }
+        
+        const dest = audioContext.createMediaStreamDestination();
+        audioStream = dest.stream;
+        
+        if (!audioVisualizer) {
+            audioVisualizer = new AudioVisualizer('spectrogram', audioContext);
+            const source = audioContext.createMediaStreamSource(audioStream);
+            audioVisualizer.connect(source);
+            audioVisualizer.start();
+        }
+        
+        console.log('Audio visualization initialized');
+        return true;
+    } catch (error) {
+        console.error('Error initializing audio visualization:', error);
+        return false;
+    }
+}
+
 // Update audio level visualization
 function updateAudioLevel(audioData) {
     const levelBar = document.getElementById('audioLevelBar');
     const chunksElement = document.getElementById('audioChunksReceived');
     const averageElement = document.getElementById('averageLevel');
+    
+    // Mettre à jour le spectrogramme si disponible
+    if (audioVisualizer && audioData) {
+        // Convertir les données audio en Float32Array pour le traitement
+        const float32Array = new Float32Array(audioData.buffer);
+        const audioBuffer = audioContext.createBuffer(1, float32Array.length, 44100);
+        audioBuffer.getChannelData(0).set(float32Array);
+        
+        // Créer une source de buffer et la connecter au visualiseur
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        
+        // Si le contexte est suspendu (à cause de la politique de lecture automatique), le reprendre
+        if (audioContext.state === 'suspended') {
+            audioContext.resume().then(() => {
+                console.log('AudioContext resumed successfully');
+            });
+        }
+    }
     const statusElement = document.getElementById('streamingStatus');
 
     // Calculate audio level
@@ -192,10 +246,72 @@ function updateVolumeDisplay() {
     }
 }
 
-// Initialiser le playback au démarrage
+// Initialiser le playback et la visualisation audio au démarrage
 document.addEventListener('DOMContentLoaded', () => {
     initializePlayback();
+    
+    // Initialiser la visualisation audio
+    if (window.AudioContext || window.webkitAudioContext) {
+        initAudioVisualization().catch(console.error);
+    } else {
+        console.warn('Web Audio API not supported in this browser');
+    }
+    
+    // Gestionnaire pour le bouton mute
+    const muteButton = document.getElementById('muteButton');
+    if (muteButton) {
+        muteButton.addEventListener('click', async () => {
+            try {
+                isMuted = !isMuted;
+                await window.api.toggleMute();
+                updateMuteButton();
+            } catch (error) {
+                console.error('Error toggling mute:', error);
+            }
+        });
+    }
+    
+    // Gestionnaire pour le slider de volume
+    const volumeSlider = document.getElementById('volumeSlider');
+    if (volumeSlider) {
+        volumeSlider.addEventListener('input', async (e) => {
+            try {
+                const newVolume = parseInt(e.target.value) / 100;
+                await window.api.setVolume(newVolume);
+                volume = newVolume;
+                updateMuteButton();
+            } catch (error) {
+                console.error('Error setting volume:', error);
+            }
+        });
+    }
+    
+    // Mettre à jour l'état initial des boutons
+    updateMuteButton();
 });
+
+// Mettre à jour l'apparence du bouton mute
+function updateMuteButton() {
+    const muteButton = document.getElementById('muteButton');
+    const muteIcon = document.getElementById('muteIcon');
+    const volumeSlider = document.getElementById('volumeSlider');
+    
+    if (!muteButton || !muteIcon || !volumeSlider) return;
+    
+    if (isMuted || volume === 0) {
+        muteIcon.textContent = '🔇';
+        volumeSlider.value = 0;
+    } else if (volume < 0.3) {
+        muteIcon.textContent = '🔈';
+        volumeSlider.value = volume * 100;
+    } else if (volume < 0.7) {
+        muteIcon.textContent = '🔉';
+        volumeSlider.value = volume * 100;
+    } else {
+        muteIcon.textContent = '🔊';
+        volumeSlider.value = volume * 100;
+    }
+}
 
 // Transcription elements
 const toggleTranscriptionCheckbox = document.getElementById('toggleTranscriptionCheckbox');
