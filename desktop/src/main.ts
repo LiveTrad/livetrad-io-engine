@@ -8,7 +8,7 @@ class LiveTradApp {
     private mainWindow: MainWindow;
     private wsService: WebSocketService;
     private webrtcService: WebRTCService;
-    private useWebRTC: boolean = false; // Toggle for WebRTC vs WebSocket
+    private useWebRTC: boolean = true; // WebRTC activé par défaut // Toggle for WebRTC vs WebSocket
 
     constructor() {
         this.mainWindow = new MainWindow();

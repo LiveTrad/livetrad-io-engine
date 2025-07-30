@@ -12,7 +12,7 @@ class AudioCaptureManager {
 
   private audioCaptureService: AudioCaptureService;
   private webrtcAudioCaptureService: WebRTCAudioCaptureService;
-  private useWebRTC: boolean = false; // Toggle for WebRTC vs WebSocket
+  private useWebRTC: boolean = true; // WebRTC activé par défaut // Toggle for WebRTC vs WebSocket
 
   constructor() {
     this.audioCaptureService = new AudioCaptureService();

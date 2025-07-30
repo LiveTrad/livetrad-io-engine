@@ -41,6 +41,8 @@ export type MessageType = {
   type: 'CONNECT_DESKTOP';
 } | {
   type: 'DISCONNECT_DESKTOP';
+} | {
+  type: 'TOGGLE_WEBRTC';
 };
 
 export type ResponseType = {
@@ -49,6 +51,7 @@ export type ResponseType = {
   state?: AudioCaptureState;
   tabs?: TabInfo[];
   connection?: ConnectionState;
+  data?: any;
 } | {
   success: false;
   error: string;
