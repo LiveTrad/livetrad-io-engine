@@ -52,10 +52,13 @@ class AudioCaptureManager {
               if (!message.stream) {
                 response = { success: false, error: 'No stream provided' };
               } else {
+                console.log(`[Background] Starting streaming with WebRTC: ${this.useWebRTC}`);
                 if (this.useWebRTC) {
+                  console.log('[Background] Using WebRTC service');
                   response = await this.webrtcAudioCaptureService.startStreaming(message.stream, message.tabId);
                   this.state = this.webrtcAudioCaptureService.getState();
                 } else {
+                  console.log('[Background] Using WebSocket service');
                   response = await this.audioCaptureService.startStreaming(message.stream, message.tabId);
                   this.state = this.audioCaptureService.getState();
                 }
@@ -80,9 +83,12 @@ class AudioCaptureManager {
               response = { success: true, tabs };
               break;
             case 'CONNECT_DESKTOP':
+              console.log(`[Background] Connecting to desktop with WebRTC: ${this.useWebRTC}`);
               if (this.useWebRTC) {
+                console.log('[Background] Using WebRTC connection');
                 response = await this.webrtcAudioCaptureService.connectToDesktop();
               } else {
+                console.log('[Background] Using WebSocket connection');
                 response = await this.audioCaptureService.connectToDesktop();
               }
               break;

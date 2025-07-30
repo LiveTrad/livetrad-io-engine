@@ -97,7 +97,7 @@ class LiveTradApp {
     private initApp(): void {
         app.on('ready', () => {
             this.mainWindow.create();
-            this.wsService.init();
+            // WebRTC only - no WebSocket
             this.webrtcService.init();
         });
 
