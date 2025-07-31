@@ -1,20 +1,17 @@
-import { WebSocketService } from '../services/websocket';
 import { AudioService } from '../services/audio';
-import { AudioCaptureService } from '../services/audioCaptureService';
-import { defaultWebSocketConfig } from '../config/websocket.config';
 import { ConnectionState, AudioSource } from '../types';
 import { defaultConfig, audioSourceDomains } from '../config/audio.config';
 
 type FilterType = 'all' | 'with-audio' | 'without-audio';
 
 class Sidebar {
-    private wsService: WebSocketService;
     private audioService: AudioService;
     private streaming: boolean = false;
     private currentFilter: FilterType = 'all';
     private currentSources: AudioSource[] = [];
     private showAllTabs: boolean = defaultConfig.showAllTabs;
     private selectedTabId: string | null = null;
+    private connectionState: ConnectionState = { status: 'disconnected', desktopUrl: 'ws://localhost:8081' };
 
     private elements = {
         connectButton: document.getElementById('connectButton') as HTMLButtonElement,
@@ -33,8 +30,6 @@ class Sidebar {
         showAllTabsCheckbox: document.getElementById('showAllTabs') as HTMLInputElement
     };
 
-    private audioCaptureService: AudioCaptureService;
-
     constructor() {
         // Vérifier que tous les éléments sont trouvés
         for (const [key, element] of Object.entries(this.elements)) {
@@ -43,9 +38,7 @@ class Sidebar {
             }
         }
 
-        this.wsService = new WebSocketService(defaultWebSocketConfig);
         this.audioService = new AudioService();
-        this.audioCaptureService = new AudioCaptureService();
         this.initializeEventListeners();
         this.initializeIntersectionObserver();
 
@@ -57,7 +50,7 @@ class Sidebar {
     }
 
     private initializeEventListeners() {
-        // WebSocket connection events
+        // WebRTC connection events
         this.elements.connectButton.addEventListener('click', this.handleConnectionClick.bind(this));
 
         // Audio source selection events
@@ -78,7 +71,7 @@ class Sidebar {
         });
 
         // Initial states
-        this.updateConnectionStatus(this.wsService.getConnectionState());
+        this.updateConnectionStatus(this.connectionState);
     }
 
     private initializeIntersectionObserver() {
@@ -130,14 +123,22 @@ class Sidebar {
 
     private async handleConnectionClick() {
         const button = this.elements.connectButton;
-        const currentState = this.wsService.getConnectionState();
 
-        if (currentState.status === 'connected') {
+        if (this.connectionState.status === 'connected') {
             // Déconnexion
             button.classList.add('disconnecting');
             this.elements.connectButtonText.textContent = 'Disconnecting...';
-            this.wsService.disconnect();
-            this.updateConnectionStatus(this.wsService.getConnectionState());
+            
+            try {
+                const response = await chrome.runtime.sendMessage({ type: 'DISCONNECT_DESKTOP' });
+                if (response.success) {
+                    this.connectionState = { status: 'disconnected', desktopUrl: 'ws://localhost:8081' };
+                    this.updateConnectionStatus(this.connectionState);
+                }
+            } catch (error) {
+                console.error('Disconnection error:', error);
+            }
+            
             button.classList.remove('disconnecting');
         } else {
             // Connexion
@@ -145,14 +146,19 @@ class Sidebar {
             this.elements.connectButtonText.textContent = 'Connecting...';
             
             try {
-                const newState = await this.wsService.connect();
-                this.updateConnectionStatus(newState);
+                const response = await chrome.runtime.sendMessage({ type: 'CONNECT_DESKTOP' });
+                if (response.success) {
+                    this.connectionState = { status: 'connected', desktopUrl: 'ws://localhost:8081' };
+                    this.updateConnectionStatus(this.connectionState);
+                } else {
+                    console.error('Connection failed:', response.error);
+                    this.connectionState = { status: 'disconnected', desktopUrl: 'ws://localhost:8081' };
+                    this.updateConnectionStatus(this.connectionState);
+                }
             } catch (error) {
                 console.error('Connection error:', error);
-                this.updateConnectionStatus({
-                    status: 'disconnected',
-                    desktopUrl: this.wsService.getConnectionState().desktopUrl
-                });
+                this.connectionState = { status: 'disconnected', desktopUrl: 'ws://localhost:8081' };
+                this.updateConnectionStatus(this.connectionState);
             }
             
             button.classList.remove('connecting');
@@ -265,7 +271,7 @@ class Sidebar {
     private async updateStreamingButtonState() {
         const selectedSource = this.audioService.getSelectedSource();
         console.log("Selected Source is : ", selectedSource);
-        const canStream = this.wsService.getConnectionState().status === 'connected' 
+        const canStream = this.connectionState.status === 'connected' 
             && selectedSource !== null;
 
         // Enable streaming for any selected source when connected
@@ -308,7 +314,10 @@ class Sidebar {
 
             if (this.streaming) {
                 // Stop streaming
-                const response = await this.audioCaptureService.stopStreaming(Number(this.selectedTabId));
+                const response = await chrome.runtime.sendMessage({ 
+                    type: 'STOP_STREAMING', 
+                    tabId: Number(this.selectedTabId) 
+                });
                 if (!response.success) {
                     throw new Error(response.error);
                 }
@@ -374,7 +383,11 @@ class Sidebar {
                 });
 
                 // Start streaming
-                const response = await this.audioCaptureService.startStreaming(stream, Number(this.selectedTabId));
+                const response = await chrome.runtime.sendMessage({ 
+                    type: 'START_STREAMING', 
+                    tabId: Number(this.selectedTabId),
+                    stream: stream
+                });
                 if (!response.success) {
                     throw new Error(response.error);
                 }

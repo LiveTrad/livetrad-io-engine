@@ -7,7 +7,7 @@ export interface WebRTCConfig {
 }
 
 export const defaultWebRTCConfig: WebRTCConfig = {
-  signalingUrl: 'ws://localhost:8080/webrtc-signaling',
+  signalingUrl: 'ws://localhost:8081',
   iceServers: [
     {
       urls: [
