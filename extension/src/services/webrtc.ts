@@ -1,3 +1,4 @@
+import { EventEmitter } from 'events';
 import { ConnectionState } from '../types';
 import { WebRTCConfig, defaultWebRTCConfig } from '../config/webrtc.config';
 import { AudioConfig, defaultAudioConfig } from '../config/audio.config';
@@ -13,7 +14,7 @@ export interface WebRTCMessage {
   data: any;
 }
 
-export class WebRTCService {
+export class WebRTCService extends EventEmitter {
   private peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
   private config: WebRTCConfig;
@@ -24,6 +25,7 @@ export class WebRTCService {
   private reconnectTimeout: NodeJS.Timeout | null = null;
 
   constructor(config: WebRTCConfig = defaultWebRTCConfig, audioConfig: AudioConfig = defaultAudioConfig) {
+    super();
     this.config = config;
     this.audioConfig = audioConfig;
   }

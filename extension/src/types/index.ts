@@ -43,6 +43,9 @@ export type MessageType = {
   type: 'DISCONNECT_DESKTOP';
 } | {
   type: 'TOGGLE_WEBRTC';
+} | {
+  type: 'CAPTURE_TAB_AUDIO';
+  tabId: number;
 };
 
 export type ResponseType = {
