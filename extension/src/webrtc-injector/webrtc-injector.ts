@@ -10,7 +10,7 @@ console.log('[WebRTC Injector] WebRTC service created and available globally');
 
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('[WebRTC Injector] Received message:', message.type, message);
+  console.log('[WebRTC Injector] Received message:', message.type);
   
   (async () => {
     try {
@@ -18,14 +18,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       
       switch (message.type) {
         case 'WEBRTC_CONNECT':
-          console.log('[WebRTC Injector] Connecting...');
+          console.log('[WebRTC Injector] Connecting to WebRTC service...');
           const connectionState = await webrtcService.connect();
+          console.log('[WebRTC Injector] Connection result:', connectionState);
           sendResponse({ success: true, data: connectionState });
           break;
           
         case 'WEBRTC_SEND_AUDIO':
           console.log('[WebRTC Injector] Sending audio stream...');
+          console.log('[WebRTC Injector] Stream details:', message.stream);
           const success = await webrtcService.sendAudioStream(message.stream);
+          console.log('[WebRTC Injector] Audio stream result:', success);
           sendResponse({ success, data: { success } });
           break;
           
