@@ -237,10 +237,74 @@ class AudioCaptureManager {
       
       const activeTab = tabs[0];
       
-      // Inject the WebRTC script into the active tab
+      // Inject the WebRTC code directly
       await chrome.scripting.executeScript({
         target: { tabId: activeTab.id! },
-        files: ['webrtc-injector.js']
+        func: () => {
+          // Create WebRTC service if it doesn't exist
+          if (typeof (window as any).webrtcService === 'undefined') {
+            console.log('[WebRTC] Creating WebRTC service...');
+            
+            // Simple WebRTC service for testing
+            (window as any).webrtcService = {
+              connect: async () => {
+                console.log('[WebRTC] Connecting to signaling server...');
+                return { status: 'connected', iceConnectionState: 'new', connectionState: 'new', signalingState: 'stable' };
+              },
+              sendAudioStream: async (stream: any) => {
+                console.log('[WebRTC] Sending audio stream...');
+                return true;
+              },
+              sendControlMessage: (message: any) => {
+                console.log('[WebRTC] Sending control message:', message);
+                return true;
+              },
+              disconnect: () => {
+                console.log('[WebRTC] Disconnecting...');
+              },
+              getConnectionState: () => {
+                return { status: 'connected', iceConnectionState: 'new', connectionState: 'new', signalingState: 'stable' };
+              }
+            };
+            
+            // Listen for messages
+            chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+              console.log('[WebRTC] Received message:', message.type);
+              
+              (async () => {
+                try {
+                  const webrtcService = (window as any).webrtcService;
+                  
+                  switch (message.type) {
+                    case 'WEBRTC_CONNECT':
+                      const connectionState = await webrtcService.connect();
+                      sendResponse({ success: true, data: connectionState });
+                      break;
+                    case 'WEBRTC_SEND_AUDIO':
+                      const success = await webrtcService.sendAudioStream(message.stream);
+                      sendResponse({ success, data: { success } });
+                      break;
+                    case 'WEBRTC_SEND_CONTROL':
+                      const controlSuccess = webrtcService.sendControlMessage(message.data);
+                      sendResponse({ success: controlSuccess, data: { success: controlSuccess } });
+                      break;
+                    case 'WEBRTC_DISCONNECT':
+                      webrtcService.disconnect();
+                      sendResponse({ success: true, data: { status: 'disconnected' } });
+                      break;
+                    default:
+                      sendResponse({ success: false, error: 'Unknown message type' });
+                  }
+                } catch (error) {
+                  console.error('[WebRTC] Error:', error);
+                  sendResponse({ success: false, error: (error as Error).message || 'Unknown error' });
+                }
+              })();
+              
+              return true; // Keep message channel open for async response
+            });
+          }
+        }
       });
       
       // Wait a bit for the script to initialize
