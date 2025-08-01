@@ -1,7 +1,6 @@
 import { AudioCaptureState, MessageType, ResponseType, TabInfo } from '../types';
 import { WebSocketService } from '../services/websocket';
 import { AudioCaptureService } from '../services/audioCaptureService';
-import { WebRTCService } from '../services/webrtc';
 
 class AudioCaptureManager {
   private state: AudioCaptureState = {
@@ -41,7 +40,6 @@ class AudioCaptureManager {
       _sender,
       sendResponse: (response: ResponseType) => void
     ) => {
-      // Handle async operations
       (async () => {
         try {
           let response: ResponseType;
@@ -53,22 +51,21 @@ class AudioCaptureManager {
               } else {
                 console.log(`[Background] Starting streaming with WebRTC: ${this.useWebRTC}`);
                 if (this.useWebRTC) {
-                  console.log('[Background] Using WebRTC via injected script');
+                  console.log('[Background] Using real WebRTC content script relay');
                   this.activeTabId = message.tabId;
-                  
                   try {
                     // First connect to desktop
                     const connectResponse = await this.sendMessageToWebRTC({
                       type: 'WEBRTC_CONNECT'
                     });
-                    
+                    console.log('[Background] WebRTC connect response:', connectResponse);
                     if (connectResponse.success) {
                       // Then send the audio stream
                       const audioResponse = await this.sendMessageToWebRTC({
                         type: 'WEBRTC_SEND_AUDIO',
-                        stream: message.stream
+                        tabId: message.tabId
                       });
-                      
+                      console.log('[Background] WebRTC audio response:', audioResponse);
                       if (audioResponse.success) {
                         this.state.isStreaming = true;
                         this.state.activeTabId = message.tabId;
@@ -121,11 +118,12 @@ class AudioCaptureManager {
             case 'CONNECT_DESKTOP':
               console.log(`[Background] Connecting to desktop with WebRTC: ${this.useWebRTC}`);
               if (this.useWebRTC) {
-                console.log('[Background] Using WebRTC via injected script');
+                console.log('[Background] Using real WebRTC content script relay');
                 try {
                   const connectResponse = await this.sendMessageToWebRTC({
                     type: 'WEBRTC_CONNECT'
                   });
+                  console.log('[Background] WebRTC connect response:', connectResponse);
                   response = connectResponse;
                 } catch (error) {
                   console.error('[Background] WebRTC connection error:', error);
@@ -208,8 +206,6 @@ class AudioCaptureManager {
     });
   }
 
-
-
   private async captureTabAudio(tabId: number): Promise<MediaStream> {
     return new Promise((resolve, reject) => {
       chrome.tabCapture.capture({
@@ -227,103 +223,94 @@ class AudioCaptureManager {
     });
   }
 
+  // Relay message to content script in active tab with safe injection
   private async sendMessageToWebRTC(message: any): Promise<ResponseType> {
     try {
-      // Get the active tab to inject the WebRTC script
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tabs.length === 0) {
+        console.error('[Background] No active tab found');
         return { success: false, error: 'No active tab found' };
       }
       
       const activeTab = tabs[0];
       
-      // Inject the WebRTC code directly
-      await chrome.scripting.executeScript({
-        target: { tabId: activeTab.id! },
-        func: () => {
-          // Create WebRTC service if it doesn't exist
-          if (typeof (window as any).webrtcService === 'undefined') {
-            console.log('[WebRTC] Creating WebRTC service...');
-            
-            // Simple WebRTC service for testing
-            (window as any).webrtcService = {
-              connect: async () => {
-                console.log('[WebRTC] Connecting to signaling server...');
-                return { status: 'connected', iceConnectionState: 'new', connectionState: 'new', signalingState: 'stable' };
-              },
-              sendAudioStream: async (stream: any) => {
-                console.log('[WebRTC] Sending audio stream...');
-                return true;
-              },
-              sendControlMessage: (message: any) => {
-                console.log('[WebRTC] Sending control message:', message);
-                return true;
-              },
-              disconnect: () => {
-                console.log('[WebRTC] Disconnecting...');
-              },
-              getConnectionState: () => {
-                return { status: 'connected', iceConnectionState: 'new', connectionState: 'new', signalingState: 'stable' };
-              }
-            };
-            
-            // Listen for messages
-            chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-              console.log('[WebRTC] Received message:', message.type);
-              
-              (async () => {
-                try {
-                  const webrtcService = (window as any).webrtcService;
-                  
-                  switch (message.type) {
-                    case 'WEBRTC_CONNECT':
-                      const connectionState = await webrtcService.connect();
-                      sendResponse({ success: true, data: connectionState });
-                      break;
-                    case 'WEBRTC_SEND_AUDIO':
-                      const success = await webrtcService.sendAudioStream(message.stream);
-                      sendResponse({ success, data: { success } });
-                      break;
-                    case 'WEBRTC_SEND_CONTROL':
-                      const controlSuccess = webrtcService.sendControlMessage(message.data);
-                      sendResponse({ success: controlSuccess, data: { success: controlSuccess } });
-                      break;
-                    case 'WEBRTC_DISCONNECT':
-                      webrtcService.disconnect();
-                      sendResponse({ success: true, data: { status: 'disconnected' } });
-                      break;
-                    default:
-                      sendResponse({ success: false, error: 'Unknown message type' });
-                  }
-                } catch (error) {
-                  console.error('[WebRTC] Error:', error);
-                  sendResponse({ success: false, error: (error as Error).message || 'Unknown error' });
-                }
-              })();
-              
-              return true; // Keep message channel open for async response
-            });
-          }
-        }
-      });
+      // Vérifier que c'est une vraie page web (http ou https)
+      if (!activeTab.url || !/^https?:\/\//.test(activeTab.url)) {
+        console.warn('[Background] Not a web page, cannot inject content script:', activeTab.url);
+        return { 
+          success: false, 
+          error: 'Please open a real web page (http:// or https://) to enable audio capture.'
+        };
+      }
       
-      // Wait a bit for the script to initialize
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Send message to the injected script
-      return new Promise((resolve) => {
-        chrome.tabs.sendMessage(activeTab.id!, message, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error('[Background] WebRTC script error:', chrome.runtime.lastError);
-            resolve({ success: false, error: chrome.runtime.lastError.message || 'WebRTC script error' });
-          } else {
-            resolve(response);
-          }
+      console.log(`[Background] Preparing to send message to tab ${activeTab.id} (${activeTab.url})`);
+      
+      // Essayer d'abord d'envoyer le message directement
+      try {
+        console.log('[Background] Attempting to send message directly to content script');
+        const response = await new Promise<ResponseType | null>((resolve) => {
+          chrome.tabs.sendMessage(activeTab.id!, message, (response) => {
+            if (chrome.runtime.lastError) {
+              console.warn('[Background] Direct message failed, will try to inject script:', chrome.runtime.lastError);
+              resolve(null);
+            } else {
+              resolve(response);
+            }
+          });
         });
-      });
+        
+        if (response) {
+          console.log('[Background] Message delivered to existing content script');
+          return response;
+        }
+      } catch (error) {
+        console.warn('[Background] Error sending direct message, will try to inject script:', error);
+      }
+      
+      // Si le message direct échoue, essayer d'injecter le script
+      try {
+        console.log('[Background] Injecting content script into tab:', activeTab.id);
+        
+        // Injecter le script de contenu
+        await chrome.scripting.executeScript({
+          target: { tabId: activeTab.id! },
+          files: ['webrtc-content.js']
+        });
+        
+        console.log('[Background] Content script injected, waiting for initialization...');
+        
+        // Attendre un peu pour que le script s'initialise
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Essayer d'envoyer le message après l'injection
+        console.log('[Background] Sending message after script injection');
+        return await new Promise<ResponseType>((resolve) => {
+          chrome.tabs.sendMessage(activeTab.id!, message, (response) => {
+            if (chrome.runtime.lastError) {
+              console.error('[Background] Failed to send message after injection:', chrome.runtime.lastError);
+              resolve({ 
+                success: false, 
+                error: `Failed to communicate with content script: ${chrome.runtime.lastError.message}`
+              });
+            } else {
+              console.log('[Background] Message delivered after script injection');
+              resolve(response);
+            }
+          });
+        });
+      } catch (error) {
+        console.error('[Background] Error injecting content script:', error);
+        return { 
+          success: false, 
+          error: `Failed to inject content script: ${(error as Error).message}`
+        };
+      }
     } catch (error) {
-      console.error('[Background] Error sending message to WebRTC:', error);
-      return { success: false, error: (error as Error).message || 'Unknown error' };
+      console.error('[Background] Error in sendMessageToWebRTC:', error);
+      return { 
+        success: false, 
+        error: `Unexpected error: ${(error as Error).message || 'Unknown error'}`
+      };
     }
   }
 }

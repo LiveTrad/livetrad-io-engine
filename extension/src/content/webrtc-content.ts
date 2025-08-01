@@ -2,89 +2,163 @@ import { WebRTCService } from '../services/webrtc';
 import { defaultWebRTCConfig } from '../config/webrtc.config';
 import { defaultAudioConfig } from '../config/audio.config';
 
-class WebRTCContentScript {
-  private webrtcService: WebRTCService;
-  private isInitialized = false;
+// Log de démarrage du script
+console.log(`[WebRTC Content][${new Date().toISOString()}] Initializing WebRTC content script in ${window.location.href}`);
 
-  constructor() {
-    this.webrtcService = new WebRTCService(defaultWebRTCConfig, defaultAudioConfig);
-    this.initialize();
-  }
+// Création de l'instance du service WebRTC
+const webrtcService = new WebRTCService(defaultWebRTCConfig, defaultAudioConfig);
 
-  private initialize(): void {
-    // Listen for messages from background script
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      this.handleMessage(message, sendResponse);
-      return true; // Keep message channel open for async response
-    });
-
-    console.log('[WebRTC Content] Content script initialized');
-  }
-
-  private async handleMessage(message: any, sendResponse: (response: any) => void): Promise<void> {
+// Écoute des messages du script d'arrière-plan
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log(`[WebRTC Content][${new Date().toISOString()}] Received message:`, message.type, message);
+  
+  // Gestion asynchrone des messages
+  (async () => {
     try {
       switch (message.type) {
         case 'WEBRTC_CONNECT':
-          console.log('[WebRTC Content] Connecting to desktop...');
-          const connectionState = await this.webrtcService.connect();
-          sendResponse({ success: true, data: connectionState });
-          break;
-
-        case 'WEBRTC_SEND_AUDIO':
-          console.log('[WebRTC Content] Sending audio stream...');
+          console.log('[WebRTC Content] Connecting to desktop via WebRTC...');
           try {
-            // Ask background script to capture the tab audio
-            const stream = await new Promise<MediaStream>((resolve, reject) => {
-              chrome.runtime.sendMessage({
-                type: 'CAPTURE_TAB_AUDIO',
-                tabId: message.tabId
-              }, (response) => {
-                if (chrome.runtime.lastError) {
-                  reject(new Error(chrome.runtime.lastError.message));
-                } else if (response && response.success) {
-                  // The stream will be passed via a different mechanism
-                  // For now, we'll create a dummy stream to test the connection
-                  navigator.mediaDevices.getUserMedia({ audio: true }).then(resolve).catch(reject);
-                } else {
-                  reject(new Error('Failed to capture tab audio'));
-                }
-              });
+            const connectionState = await webrtcService.connect();
+            console.log('[WebRTC Content] Successfully connected to WebRTC service. State:', connectionState);
+            sendResponse({ 
+              success: true, 
+              data: connectionState 
             });
-            
-            const success = await this.webrtcService.sendAudioStream(stream);
-            sendResponse({ success, data: { success } });
           } catch (error) {
-            console.error('[WebRTC Content] Error getting audio stream:', error);
-            sendResponse({ success: false, error: (error as Error).message });
+            console.error('[WebRTC Content] Failed to connect to WebRTC service:', error);
+            sendResponse({ 
+              success: false, 
+              error: `Connection failed: ${(error as Error).message}` 
+            });
           }
           break;
 
+        case 'WEBRTC_SEND_AUDIO':
+          console.log('[WebRTC Content] Starting tab audio capture...');
+          try {
+            chrome.tabCapture.capture({ 
+              audio: true, 
+              video: false 
+            }, async (stream) => {
+              if (chrome.runtime.lastError || !stream) {
+                const errorMsg = chrome.runtime.lastError?.message || 'No stream received';
+                console.error('[WebRTC Content] Error capturing tab audio:', errorMsg);
+                sendResponse({ 
+                  success: false, 
+                  error: `Audio capture failed: ${errorMsg}` 
+                });
+                return;
+              }
+              
+              console.log('[WebRTC Content] Successfully captured tab audio stream');
+              
+              try {
+                const success = await webrtcService.sendAudioStream(stream);
+                if (success) {
+                  console.log('[WebRTC Content] Audio stream successfully sent to WebRTC service');
+                  sendResponse({ 
+                    success: true, 
+                    data: { success: true } 
+                  });
+                } else {
+                  console.error('[WebRTC Content] Failed to send audio stream to WebRTC service');
+                  sendResponse({ 
+                    success: false, 
+                    error: 'Failed to send audio stream to WebRTC service' 
+                  });
+                }
+              } catch (error) {
+                console.error('[WebRTC Content] Error sending audio stream:', error);
+                sendResponse({ 
+                  success: false, 
+                  error: `Error sending audio: ${(error as Error).message}` 
+                });
+              }
+            });
+          } catch (error) {
+            console.error('[WebRTC Content] Unexpected error in WEBRTC_SEND_AUDIO:', error);
+            sendResponse({ 
+              success: false, 
+              error: `Unexpected error: ${(error as Error).message}` 
+            });
+          }
+          return true; // Indique que la réponse sera asynchrone
+
         case 'WEBRTC_SEND_CONTROL':
-          console.log('[WebRTC Content] Sending control message...');
-          const controlSuccess = this.webrtcService.sendControlMessage(message.data);
-          sendResponse({ success: controlSuccess, data: { success: controlSuccess } });
+          console.log('[WebRTC Content] Sending control message:', message.data);
+          try {
+            const controlSuccess = webrtcService.sendControlMessage(message.data);
+            console.log(`[WebRTC Content] Control message ${controlSuccess ? 'sent successfully' : 'failed to send'}`);
+            sendResponse({ 
+              success: controlSuccess, 
+              data: { success: controlSuccess } 
+            });
+          } catch (error) {
+            console.error('[WebRTC Content] Error sending control message:', error);
+            sendResponse({ 
+              success: false, 
+              error: `Control message failed: ${(error as Error).message}` 
+            });
+          }
           break;
 
         case 'WEBRTC_DISCONNECT':
-          console.log('[WebRTC Content] Disconnecting...');
-          this.webrtcService.disconnect();
-          sendResponse({ success: true, data: { status: 'disconnected' } });
+          console.log('[WebRTC Content] Disconnecting from desktop...');
+          try {
+            webrtcService.disconnect();
+            console.log('[WebRTC Content] Successfully disconnected from WebRTC service');
+            sendResponse({ 
+              success: true, 
+              data: { status: 'disconnected' } 
+            });
+          } catch (error) {
+            console.error('[WebRTC Content] Error during disconnection:', error);
+            sendResponse({ 
+              success: false, 
+              error: `Disconnection failed: ${(error as Error).message}` 
+            });
+          }
           break;
 
         case 'WEBRTC_GET_STATE':
-          const state = this.webrtcService.getConnectionState();
-          sendResponse({ success: true, data: state });
+          try {
+            const state = webrtcService.getConnectionState();
+            console.log('[WebRTC Content] Current connection state:', state);
+            sendResponse({ 
+              success: true, 
+              data: state 
+            });
+          } catch (error) {
+            console.error('[WebRTC Content] Error getting connection state:', error);
+            sendResponse({ 
+              success: false, 
+              error: `Failed to get connection state: ${(error as Error).message}` 
+            });
+          }
           break;
 
         default:
-          sendResponse({ success: false, error: 'Unknown message type' });
+          const warningMsg = `Unknown message type: ${message.type}`;
+          console.warn(`[WebRTC Content] ${warningMsg}`, message);
+          sendResponse({ 
+            success: false, 
+            error: warningMsg 
+          });
       }
-         } catch (error) {
-       console.error('[WebRTC Content] Error handling message:', error);
-       sendResponse({ success: false, error: (error as Error).message || 'Unknown error' });
-     }
-  }
-}
+    } catch (error) {
+      const errorMsg = `[WebRTC Content] Unexpected error in message handler: ${(error as Error).message}`;
+      console.error(errorMsg, error);
+      sendResponse({ 
+        success: false, 
+        error: errorMsg 
+      });
+    }
+  })();
+  
+  // Retourne true pour indiquer que la réponse sera asynchrone
+  return true;
+});
 
-// Initialize the content script
-new WebRTCContentScript(); 
+// Log de fin d'initialisation
+console.log(`[WebRTC Content][${new Date().toISOString()}] Content script initialization complete`); 

@@ -121,8 +121,93 @@ class Sidebar {
         }
     }
 
+    private showError(message: string, isFatal: boolean = false) {
+        // Créer ou mettre à jour le message d'erreur
+        let errorElement = document.getElementById('errorMessage');
+        if (!errorElement) {
+            errorElement = document.createElement('div');
+            errorElement.id = 'errorMessage';
+            errorElement.className = 'error-message';
+            this.elements.streamingSection.insertAdjacentElement('beforebegin', errorElement);
+        }
+        
+        errorElement.innerHTML = `
+            <div class="error-content">
+                <span class="material-icons-round error-icon">error_outline</span>
+                <span class="error-text">${message}</span>
+                ${isFatal ? '' : '<button class="dismiss-error">×</button>'}
+            </div>
+        `;
+        
+        // Ajouter un gestionnaire d'événements pour le bouton de fermeture
+        const dismissButton = errorElement.querySelector('.dismiss-error');
+        if (dismissButton) {
+            dismissButton.addEventListener('click', () => {
+                errorElement?.remove();
+            });
+        }
+        
+        // Supprimer automatiquement après 10 secondes pour les erreurs non fatales
+        if (!isFatal) {
+            setTimeout(() => {
+                errorElement?.remove();
+            }, 10000);
+        }
+    }
+    
+    private clearError() {
+        const errorElement = document.getElementById('errorMessage');
+        if (errorElement) {
+            errorElement.remove();
+        }
+    }
+
+    private updateConnectionStatus(state: ConnectionState) {
+        this.connectionState = state;
+        
+        // Mettre à jour l'interface utilisateur en fonction de l'état de la connexion
+        const { statusDot, statusText, connectButton, connectButtonText } = this.elements;
+        
+        if (!statusDot || !statusText || !connectButton || !connectButtonText) {
+            console.error('One or more required elements are missing');
+            return;
+        }
+        
+        switch (state.status) {
+            case 'connected':
+                statusDot.style.backgroundColor = '#22c55e';
+                statusText.textContent = 'Connected';
+                connectButtonText.textContent = 'Disconnect';
+                connectButton.classList.remove('connecting');
+                break;
+                
+            case 'connecting':
+                statusDot.style.backgroundColor = '#f59e0b';
+                statusText.textContent = 'Connecting...';
+                connectButtonText.textContent = 'Connecting...';
+                break;
+                
+            case 'disconnected':
+            default:
+                statusDot.style.backgroundColor = '#ef4444';
+                statusText.textContent = 'Disconnected';
+                connectButtonText.textContent = 'Connect';
+                connectButton.classList.remove('connecting');
+                break;
+        }
+        
+        // Mettre à jour l'état du bouton de streaming
+        this.updateStreamingButtonState();
+    }
+
     private async handleConnectionClick() {
         const button = this.elements.connectButton;
+        this.clearError(); // Effacer les erreurs précédentes
+
+        if (!button || !this.elements.connectButtonText) {
+            console.error('Required elements for connection handling are missing');
+            return;
+        }
 
         if (this.connectionState.status === 'connected') {
             // Déconnexion
@@ -131,15 +216,19 @@ class Sidebar {
             
             try {
                 const response = await chrome.runtime.sendMessage({ type: 'DISCONNECT_DESKTOP' });
-                if (response.success) {
+                if (response?.success) {
                     this.connectionState = { status: 'disconnected', desktopUrl: 'ws://localhost:8081' };
                     this.updateConnectionStatus(this.connectionState);
+                } else {
+                    const errorMessage = response?.error || 'Unknown error';
+                    this.showError(`Failed to disconnect: ${errorMessage}`, false);
                 }
             } catch (error) {
                 console.error('Disconnection error:', error);
+                this.showError('An error occurred while disconnecting. Please try again.', false);
+            } finally {
+                button.classList.remove('disconnecting');
             }
-            
-            button.classList.remove('disconnecting');
         } else {
             // Connexion
             button.classList.add('connecting');
@@ -147,32 +236,33 @@ class Sidebar {
             
             try {
                 const response = await chrome.runtime.sendMessage({ type: 'CONNECT_DESKTOP' });
+                
+                if (!response) {
+                    throw new Error('No response from background script');
+                }
+                
                 if (response.success) {
-                    this.connectionState = { status: 'connected', desktopUrl: 'ws://localhost:8081' };
+                    // Connexion réussie
+                    this.connectionState = {
+                        status: 'connected',
+                        desktopUrl: response.data?.desktopUrl || 'ws://localhost:8081'
+                    };
                     this.updateConnectionStatus(this.connectionState);
                 } else {
-                    console.error('Connection failed:', response.error);
-                    this.connectionState = { status: 'disconnected', desktopUrl: 'ws://localhost:8081' };
-                    this.updateConnectionStatus(this.connectionState);
+                    // Échec de la connexion avec un message d'erreur
+                    const errorMessage = response.error || 'Failed to connect to desktop application';
+                    this.showError(`Connection failed: ${errorMessage}`, false);
                 }
             } catch (error) {
                 console.error('Connection error:', error);
-                this.connectionState = { status: 'disconnected', desktopUrl: 'ws://localhost:8081' };
-                this.updateConnectionStatus(this.connectionState);
+                this.showError('An error occurred while connecting. Please try again.', false);
+            } finally {
+                if (this.connectionState.status !== 'connected' && this.elements.connectButtonText) {
+                    this.elements.connectButtonText.textContent = 'Connect';
+                    button.classList.remove('connecting');
+                }
             }
-            
-            button.classList.remove('connecting');
         }
-    }
-
-    private updateConnectionStatus(state: ConnectionState) {
-        const isConnected = state.status === 'connected';
-        
-        this.elements.statusDot.className = `status-dot ${state.status}`;
-        this.elements.statusText.textContent = state.status;
-        this.elements.connectButtonText.textContent = isConnected ? 'Disconnect' : 'Connect';
-        
-        this.updateStreamingButtonState();
     }
 
     private updateSourcesList() {
@@ -270,21 +360,20 @@ class Sidebar {
 
     private async updateStreamingButtonState() {
         const selectedSource = this.audioService.getSelectedSource();
-        console.log("Selected Source is : ", selectedSource);
-        const canStream = this.connectionState.status === 'connected' 
-            && selectedSource !== null;
+        console.log("Selected Source is: ", selectedSource);
+        const canStream = this.connectionState.status === 'connected' && selectedSource !== null;
 
         // Enable streaming for any selected source when connected
         this.elements.startStreamingButton.disabled = !canStream;
-        
+
         if (!canStream) {
             this.elements.startStreamingButton.innerHTML = `
                 <span class="button-icon">🎙️</span>
                 Start Streaming
             `;
-            this.elements.statusMessage.textContent = selectedSource ? 
-                'Connect to start streaming' : 
-                'Select a source and connect to start streaming';
+            this.elements.statusMessage.textContent = selectedSource
+                ? 'Connect to start streaming'
+                : 'Select a source and connect to start streaming';
             this.elements.streamingStatus.classList.remove('streaming-active');
         } else if (this.streaming && this.selectedTabId) {
             // Get the current streaming tab's title
@@ -294,10 +383,26 @@ class Sidebar {
                     <span class="button-icon">⏹️</span>
                     Stop Streaming (${streamingTab.title || 'Unknown'})
                 `;
+                this.elements.statusMessage.textContent = 'Streaming active';
+                this.elements.streamingStatus.classList.add('streaming-active');
             } catch (error) {
                 console.error('Error getting streaming tab info:', error);
+                this.elements.statusMessage.textContent = 'Error retrieving streaming tab information';
+                this.elements.startStreamingButton.innerHTML = `
+                    <span class="button-icon">⏹️</span>
+                    Stop Streaming
+                `;
+                this.elements.streamingStatus.classList.add('streaming-active');
             }
-    }}
+        } else {
+            this.elements.startStreamingButton.innerHTML = `
+                <span class="button-icon">🎙️</span>
+                Start Streaming
+            `;
+            this.elements.statusMessage.textContent = 'Ready to stream';
+            this.elements.streamingStatus.classList.remove('streaming-active');
+        }
+    }
 
     private async toggleStreaming() {
         if (!this.selectedTabId) return;
@@ -412,8 +517,6 @@ class Sidebar {
             }
         }
     }
-
-
 }
 
 // Initialize the sidebar
