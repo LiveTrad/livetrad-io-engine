@@ -121,17 +121,107 @@ export class WebRTCService extends EventEmitter {
 
   private async handleOffer(offer: RTCSessionDescriptionInit, ws: WebSocket): Promise<void> {
     try {
-      // Create RTCPeerConnection
-      this.peerConnection = new RTCPeerConnection({
+      console.log('[WebRTC] Creating RTCPeerConnection with config:', {
         iceServers: config.webrtc.iceServers,
-        iceCandidatePoolSize: 10,
+        iceTransportPolicy: 'all',
         bundlePolicy: 'max-bundle',
-        rtcpMuxPolicy: 'require'
+        rtcpMuxPolicy: 'require',
+        iceCandidatePoolSize: 10
       });
+
+      // Create RTCPeerConnection with enhanced configuration
+      const rtcConfig: any = {
+        iceServers: config.webrtc.iceServers,
+        // @ts-ignore - iceTransportPolicy is not in the TypeScript definition
+        iceTransportPolicy: 'all', // Try both relay and non-relay candidates
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require',
+        iceCandidatePoolSize: 10,  // Increased pool size
+        sdpSemantics: 'unified-plan' as const // Use unified plan SDP
+      };
+      
+      this.peerConnection = new RTCPeerConnection(rtcConfig);
 
       if (!this.peerConnection) {
         throw new Error('Failed to create RTCPeerConnection');
       }
+      
+      // Configure connection constraints
+      const constraints = {
+        optional: [
+          { DtlsSrtpKeyAgreement: true },
+          { RtpDataChannels: true },
+          { googDscp: true },
+          { googCpuOveruseDetection: true },
+          { googCpuOveruseEncodeUsage: true },
+          { googCpuOveruseEnforce: true },
+          { googScreencastMinBitrate: 300 },
+          { googIPv6: true },
+          { googDscp: true },
+          { googSuspendBelowMinBitrate: false },
+          { googCombinedAudioVideoBwe: true },
+          { googScreencastMinBitrate: 300 },
+          { googCpuOveruseEncodeUsage: true },
+          { googHighBitrate: true },
+          { googPayloadPadding: true },
+          { googVeryHighBitrate: true },
+          { googCpuOveruseEncodeUsage: true },
+          { googScreencastMinBitrate: 300 },
+          { googHighStartBitrate: 2000 },
+          { googPayloadPadding: true },
+          { googVeryHighBitrate: true }
+        ]
+      };
+      
+      // Set up ICE connection state logging
+      this.peerConnection.oniceconnectionstatechange = () => {
+        const state = this.peerConnection?.iceConnectionState;
+        console.log(`[WebRTC] ICE Connection State: ${state}`);
+        
+        // Handle different ICE connection states
+        switch (state) {
+          case 'connected':
+            console.log('[WebRTC] ICE connection established successfully');
+            break;
+          case 'disconnected':
+            console.log('[WebRTC] ICE connection disconnected');
+            break;
+          case 'failed':
+            console.error('[WebRTC] ICE connection failed');
+            // Try to restart ICE
+            this.peerConnection?.restartIce();
+            break;
+          case 'closed':
+            console.log('[WebRTC] ICE connection closed');
+            break;
+        }
+        
+        this.emitConnectionStateChange();
+      };
+      
+      // Log ICE gathering state changes
+      this.peerConnection.onicegatheringstatechange = () => {
+        console.log(`[WebRTC] ICE Gathering State: ${this.peerConnection?.iceGatheringState}`);
+      };
+      
+      // Log ICE candidates as they're gathered
+      this.peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log('[WebRTC] Generated ICE candidate:', {
+            candidate: event.candidate.candidate,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex
+          });
+          
+          // Send the ICE candidate to the remote peer
+          this.sendSignalingMessage(ws, {
+            type: 'ice-candidate',
+            data: event.candidate
+          });
+        } else {
+          console.log('[WebRTC] All ICE candidates have been generated');
+        }
+      };
 
       // Set up event listeners
       this.peerConnection.onicecandidate = (event) => {

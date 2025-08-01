@@ -29,21 +29,34 @@ export const config = {
     },
     webrtc: {
         signalingPort: getEnvNumber('WEBRTC_SIGNALING_PORT', 8081),
-        host: getEnvVar('WEBRTC_HOST', 'localhost'),
+        host: getEnvVar('WEBRTC_HOST', '0.0.0.0'), // Écouter sur toutes les interfaces
         iceServers: [
-            {
-                urls: [
-                    'stun:stun.l.google.com:19302',
-                    'stun:stun1.l.google.com:19302',
-                    'stun:stun2.l.google.com:19302'
-                ]
-            },
-            {
-                urls: [
-                    'stun:stun.stunprotocol.org:3478'
-                ]
-            }
-        ]
+            // Serveurs STUN publics
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:stun.stunprotocol.org:3478' },
+            { urls: 'stun:stun.voipbuster.com:3478' },
+            
+            // Configuration pour les serveurs TURN (à remplacer par vos propres identifiants si nécessaire)
+            // {
+            //   urls: 'turn:your-turn-server.com:3478',
+            //   username: 'username',
+            //   credential: 'password'
+            // }
+            
+            // Configuration pour les tests locaux
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ],
+        iceTransportPolicy: 'all', // Essayer à la fois relay et non-relay
+        iceCandidatePoolSize: 10,  // Augmenter le pool de candidats
+        iceServersConfig: {
+            transportPolicy: 'all',
+            iceCandidatePoolSize: 10
+        }
     },
     deepgram: {
         apiKey: getEnvVar('DEEPGRAM_API_KEY', ''),
