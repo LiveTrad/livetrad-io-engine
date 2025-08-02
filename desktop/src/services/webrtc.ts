@@ -300,7 +300,7 @@ export class WebRTCService extends EventEmitter {
             relatedAddress: event.candidate.relatedAddress,
             relatedPort: event.candidate.relatedPort,
             usernameFragment: event.candidate.usernameFragment,
-            networkCost: event.candidate.networkCost
+            // networkCost: event.candidate.networkCost
           };
           
           console.log('[WebRTC] Generated ICE candidate:', candidateInfo);
