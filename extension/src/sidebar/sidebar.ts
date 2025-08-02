@@ -44,6 +44,14 @@ class Sidebar {
 
         this.audioService = new AudioService();
         this.webrtcService = new WebRTCService(defaultWebRTCConfig, defaultAudioConfig);
+        
+        // Écouter les changements d'état de WebRTC
+        this.webrtcService.on('connectionstatechange', (state) => {
+            console.log('[Sidebar] WebRTC connection state changed:', state);
+            this.connectionState = state;
+            this.updateConnectionStatus(state);
+        });
+        
         this.initializeEventListeners();
         this.initializeIntersectionObserver();
 
@@ -223,8 +231,7 @@ class Sidebar {
                 if (this.webrtcService) {
                     this.webrtcService.disconnect();
                 }
-                this.connectionState = { status: 'disconnected', desktopUrl: 'ws://localhost:8081' };
-                this.updateConnectionStatus(this.connectionState);
+                // L'état sera mis à jour via l'événement connectionstatechange
             } catch (error) {
                 console.error('Disconnection error:', error);
                 this.showError('An error occurred while disconnecting. Please try again.', false);
@@ -239,25 +246,39 @@ class Sidebar {
             try {
                 if (!this.webrtcService) {
                     this.webrtcService = new WebRTCService(defaultWebRTCConfig, defaultAudioConfig);
+                    
+                    // Écouter les changements d'état de WebRTC
+                    this.webrtcService.on('connectionstatechange', (state) => {
+                        console.log('[Sidebar] WebRTC connection state changed:', state);
+                        this.connectionState = state;
+                        this.updateConnectionStatus(state);
+                    });
                 }
                 
-                const connectionState = await this.webrtcService.connect();
-                console.log('[Sidebar] WebRTC connection state:', connectionState);
+                // Démarrer la connexion (ne pas attendre immédiatement)
+                this.webrtcService.connect().catch((error) => {
+                    console.error('Connection error:', error);
+                    this.showError(`Connection failed: ${(error as Error).message}`, false);
+                    
+                    // Remettre le bouton en état normal en cas d'erreur
+                    if (this.elements.connectButtonText) {
+                        this.elements.connectButtonText.textContent = 'Connect';
+                    }
+                    button.classList.remove('connecting');
+                });
                 
-                if (connectionState.status === 'connected') {
-                    this.connectionState = connectionState;
-                    this.updateConnectionStatus(this.connectionState);
-                } else {
-                    throw new Error('Failed to connect to desktop via WebRTC');
-                }
+                // Ne pas afficher d'erreur immédiatement, laisser WebRTC se connecter
+                // L'état sera mis à jour via l'événement connectionstatechange
+                
             } catch (error) {
                 console.error('Connection error:', error);
                 this.showError(`Connection failed: ${(error as Error).message}`, false);
-            } finally {
-                if (this.connectionState.status !== 'connected' && this.elements.connectButtonText) {
+                
+                // Remettre le bouton en état normal en cas d'erreur
+                if (this.elements.connectButtonText) {
                     this.elements.connectButtonText.textContent = 'Connect';
-                    button.classList.remove('connecting');
                 }
+                button.classList.remove('connecting');
             }
         }
     }
@@ -481,16 +502,9 @@ class Sidebar {
                     );
                 });
 
-                // Connect to WebRTC first
-                if (!this.webrtcService) {
-                    this.webrtcService = new WebRTCService(defaultWebRTCConfig, defaultAudioConfig);
-                }
-                
-                const connectionState = await this.webrtcService.connect();
-                console.log('[Sidebar] WebRTC connection state:', connectionState);
-                
-                if (connectionState.status !== 'connected') {
-                    throw new Error('Failed to connect to desktop via WebRTC');
+                // Check if WebRTC is connected
+                if (!this.webrtcService || this.connectionState.status !== 'connected') {
+                    throw new Error('WebRTC connection not established. Please connect first.');
                 }
 
                 // Send audio stream via WebRTC
