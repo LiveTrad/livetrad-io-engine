@@ -52,6 +52,18 @@ class Sidebar {
             this.updateConnectionStatus(state);
         });
         
+        // Écouter les événements de reconnexion
+        this.webrtcService.on('reconnecting', (attempt: number, maxAttempts: number) => {
+            console.log(`[Sidebar] WebRTC reconnecting attempt ${attempt}/${maxAttempts}`);
+            this.elements.statusMessage.textContent = `Connecting to desktop... (attempt ${attempt}/${maxAttempts})`;
+        });
+        
+        this.webrtcService.on('reconnect-failed', () => {
+            console.log('[Sidebar] WebRTC reconnect failed');
+            this.elements.statusMessage.textContent = 'Connection failed after multiple attempts';
+            this.showError('Failed to connect to desktop after multiple attempts. Please check if the desktop app is running.', false);
+        });
+        
         this.initializeEventListeners();
         this.initializeIntersectionObserver();
 
@@ -244,7 +256,14 @@ class Sidebar {
             this.elements.connectButtonText.textContent = 'Connecting...';
             
             try {
-                if (!this.webrtcService) {
+                // Si le service n'existe pas ou s'il a échoué, en créer un nouveau
+                if (!this.webrtcService || this.connectionState.status === 'disconnected') {
+                    if (this.webrtcService) {
+                        // Nettoyer l'ancien service
+                        this.webrtcService.removeAllListeners();
+                        this.webrtcService.disconnect();
+                    }
+                    
                     this.webrtcService = new WebRTCService(defaultWebRTCConfig, defaultAudioConfig);
                     
                     // Écouter les changements d'état de WebRTC
@@ -253,12 +272,29 @@ class Sidebar {
                         this.connectionState = state;
                         this.updateConnectionStatus(state);
                     });
+                    
+                    // Écouter les événements de reconnexion
+                    this.webrtcService.on('reconnecting', (attempt: number, maxAttempts: number) => {
+                        console.log(`[Sidebar] WebRTC reconnecting attempt ${attempt}/${maxAttempts}`);
+                        this.elements.statusMessage.textContent = `Connecting to desktop... (attempt ${attempt}/${maxAttempts})`;
+                    });
+                    
+                    this.webrtcService.on('reconnect-failed', () => {
+                        console.log('[Sidebar] WebRTC reconnect failed');
+                        this.elements.statusMessage.textContent = 'Connection failed after multiple attempts';
+                        this.showError('Failed to connect to desktop after multiple attempts. Please check if the desktop app is running.', false);
+                    });
                 }
                 
                 // Démarrer la connexion (ne pas attendre immédiatement)
                 this.webrtcService.connect().catch((error) => {
                     console.error('Connection error:', error);
-                    this.showError(`Connection failed: ${(error as Error).message}`, false);
+                    
+                    // Ne pas afficher d'erreur immédiatement si c'est juste un timeout de connexion
+                    // L'utilisateur verra les tentatives de reconnexion via les événements
+                    if (error && error.message && !error.message.includes('timeout')) {
+                        this.showError(`Connection failed: ${(error as Error).message}`, false);
+                    }
                     
                     // Remettre le bouton en état normal en cas d'erreur
                     if (this.elements.connectButtonText) {

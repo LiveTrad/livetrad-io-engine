@@ -48,6 +48,7 @@ export class WebRTCService extends EventEmitter {
         this.connectionStartTime = Date.now();
         this.isConnecting = true;
         this.iceRestartAttempts = 0;
+        this.reconnectAttempts = 0; // Remettre le compteur de reconnexion à zéro
         
         logger.info('WebRTC', `Connecting to signaling server: ${this.config.signalingUrl}`);
         
@@ -468,6 +469,10 @@ export class WebRTCService extends EventEmitter {
     this.isConnecting = false;
     this.stopHeartbeat();
     
+    // Remettre tous les compteurs à zéro
+    this.reconnectAttempts = 0;
+    this.iceRestartAttempts = 0;
+    
     if (this.signalingWebSocket?.readyState === WebSocket.OPEN) {
       const disconnectMsg: WebRTCMessage = {
         type: 'control',
@@ -615,6 +620,9 @@ export class WebRTCService extends EventEmitter {
       
       logger.info('WebRTC', `Will attempt to reconnect in ${delay}ms`);
       
+      // Émettre l'événement de reconnexion
+      this.emit('reconnecting', this.reconnectAttempts, this.config.maxReconnectAttempts);
+      
       this.reconnectTimeout = setTimeout(() => {
         logger.info('WebRTC', `Attempting to reconnect (${this.reconnectAttempts}/${this.config.maxReconnectAttempts})`);
         this.connect().catch(error => {
@@ -623,6 +631,8 @@ export class WebRTCService extends EventEmitter {
       }, delay);
     } else {
       logger.warn('WebRTC', 'Max reconnection attempts reached, giving up');
+      // Émettre l'événement d'échec de reconnexion
+      this.emit('reconnect-failed');
       this.emit('disconnected');
     }
   }
