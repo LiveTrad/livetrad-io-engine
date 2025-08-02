@@ -29,6 +29,13 @@ export interface ConnectionState {
 export type MessageType = {
   type: 'START_STREAMING';
   tabId: number;
+} | {
+  type: 'START_STREAMING_WITH_STREAM';
+  tabId: number;
+  stream: MediaStream;
+} | {
+  type: 'WEBRTC_SEND_AUDIO_STREAM';
+  tabId: number;
   stream: MediaStream;
 } | {
   type: 'STOP_STREAMING';

@@ -1,11 +1,15 @@
 import { AudioService } from '../services/audio';
 import { ConnectionState, AudioSource } from '../types';
 import { defaultConfig, audioSourceDomains } from '../config/audio.config';
+import { WebRTCService } from '../services/webrtc';
+import { defaultWebRTCConfig } from '../config/webrtc.config';
+import { defaultAudioConfig } from '../config/audio.config';
 
 type FilterType = 'all' | 'with-audio' | 'without-audio';
 
 class Sidebar {
     private audioService: AudioService;
+    private webrtcService: WebRTCService | null = null;
     private streaming: boolean = false;
     private currentFilter: FilterType = 'all';
     private currentSources: AudioSource[] = [];
@@ -39,6 +43,7 @@ class Sidebar {
         }
 
         this.audioService = new AudioService();
+        this.webrtcService = new WebRTCService(defaultWebRTCConfig, defaultAudioConfig);
         this.initializeEventListeners();
         this.initializeIntersectionObserver();
 
@@ -215,14 +220,11 @@ class Sidebar {
             this.elements.connectButtonText.textContent = 'Disconnecting...';
             
             try {
-                const response = await chrome.runtime.sendMessage({ type: 'DISCONNECT_DESKTOP' });
-                if (response?.success) {
-                    this.connectionState = { status: 'disconnected', desktopUrl: 'ws://localhost:8081' };
-                    this.updateConnectionStatus(this.connectionState);
-                } else {
-                    const errorMessage = response?.error || 'Unknown error';
-                    this.showError(`Failed to disconnect: ${errorMessage}`, false);
+                if (this.webrtcService) {
+                    this.webrtcService.disconnect();
                 }
+                this.connectionState = { status: 'disconnected', desktopUrl: 'ws://localhost:8081' };
+                this.updateConnectionStatus(this.connectionState);
             } catch (error) {
                 console.error('Disconnection error:', error);
                 this.showError('An error occurred while disconnecting. Please try again.', false);
@@ -235,27 +237,22 @@ class Sidebar {
             this.elements.connectButtonText.textContent = 'Connecting...';
             
             try {
-                const response = await chrome.runtime.sendMessage({ type: 'CONNECT_DESKTOP' });
-                
-                if (!response) {
-                    throw new Error('No response from background script');
+                if (!this.webrtcService) {
+                    this.webrtcService = new WebRTCService(defaultWebRTCConfig, defaultAudioConfig);
                 }
                 
-                if (response.success) {
-                    // Connexion réussie
-                    this.connectionState = {
-                        status: 'connected',
-                        desktopUrl: response.data?.desktopUrl || 'ws://localhost:8081'
-                    };
+                const connectionState = await this.webrtcService.connect();
+                console.log('[Sidebar] WebRTC connection state:', connectionState);
+                
+                if (connectionState.status === 'connected') {
+                    this.connectionState = connectionState;
                     this.updateConnectionStatus(this.connectionState);
                 } else {
-                    // Échec de la connexion avec un message d'erreur
-                    const errorMessage = response.error || 'Failed to connect to desktop application';
-                    this.showError(`Connection failed: ${errorMessage}`, false);
+                    throw new Error('Failed to connect to desktop via WebRTC');
                 }
             } catch (error) {
                 console.error('Connection error:', error);
-                this.showError('An error occurred while connecting. Please try again.', false);
+                this.showError(`Connection failed: ${(error as Error).message}`, false);
             } finally {
                 if (this.connectionState.status !== 'connected' && this.elements.connectButtonText) {
                     this.elements.connectButtonText.textContent = 'Connect';
@@ -419,12 +416,9 @@ class Sidebar {
 
             if (this.streaming) {
                 // Stop streaming
-                const response = await chrome.runtime.sendMessage({ 
-                    type: 'STOP_STREAMING', 
-                    tabId: Number(this.selectedTabId) 
-                });
-                if (!response.success) {
-                    throw new Error(response.error);
+                if (this.webrtcService) {
+                    this.webrtcService.disconnect();
+                    console.log('[Sidebar] WebRTC disconnected');
                 }
                 this.streaming = false;
                 this.elements.startStreamingButton.innerHTML = `
@@ -463,14 +457,49 @@ class Sidebar {
                     throw new Error('Failed to activate the selected tab. Please try again.');
                 }
 
-                // Start streaming directly via background script
-                const startResponse = await chrome.runtime.sendMessage({ 
-                    type: 'START_STREAMING', 
-                    tabId: Number(this.selectedTabId)
+                // Request tab capture permission
+                const stream = await new Promise<MediaStream>((resolve, reject) => {
+                    chrome.tabCapture.capture(
+                        { 
+                            audio: true,
+                            video: false,
+                            audioConstraints: {
+                                mandatory: {
+                                    chromeMediaSource: 'tab'
+                                }
+                            }
+                        },
+                        (stream) => {
+                            if (chrome.runtime.lastError) {
+                                reject(new Error(chrome.runtime.lastError.message));
+                            } else if (!stream) {
+                                reject(new Error('Failed to capture tab audio. Please ensure you have granted the necessary permissions and the tab is active.'));
+                            } else {
+                                resolve(stream);
+                            }
+                        }
+                    );
                 });
-                if (!startResponse.success) {
-                    throw new Error(startResponse.error);
+
+                // Connect to WebRTC first
+                if (!this.webrtcService) {
+                    this.webrtcService = new WebRTCService(defaultWebRTCConfig, defaultAudioConfig);
                 }
+                
+                const connectionState = await this.webrtcService.connect();
+                console.log('[Sidebar] WebRTC connection state:', connectionState);
+                
+                if (connectionState.status !== 'connected') {
+                    throw new Error('Failed to connect to desktop via WebRTC');
+                }
+
+                // Send audio stream via WebRTC
+                const success = await this.webrtcService.sendAudioStream(stream);
+                if (!success) {
+                    throw new Error('Failed to send audio stream via WebRTC');
+                }
+                
+                console.log('[Sidebar] Audio stream sent successfully via WebRTC');
                 this.streaming = true;
                 this.elements.startStreamingButton.innerHTML = `
                     <span class="button-icon">⏹️</span>

@@ -312,9 +312,12 @@ chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
             }
             
             switch (message.type) {
-                case 'CAPTURE_TAB_AUDIO':
+                case 'WEBRTC_SEND_AUDIO_STREAM':
                     try {
-                        console.log('[WebRTC Content] Received request to capture tab audio');
+                        console.log('[WebRTC Content] Received request to send audio stream to WebRTC');
+                        
+                        // Nous ne pouvons pas recevoir le stream directement du background script
+                        // Nous devons capturer l'audio nous-mêmes
                         const stream = await captureTabAudio();
                         
                         // Envoyer le flux audio au service WebRTC
@@ -332,10 +335,10 @@ chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
                             });
                         }
                     } catch (error) {
-                        console.error('[WebRTC Content] Error in CAPTURE_TAB_AUDIO:', error);
+                        console.error('[WebRTC Content] Error in WEBRTC_SEND_AUDIO_STREAM:', error);
                         sendResponse({ 
                             success: false, 
-                            error: `Failed to capture tab audio: ${(error as Error).message}` 
+                            error: `Failed to send audio stream to WebRTC: ${(error as Error).message}` 
                         });
                     }
                     break;
