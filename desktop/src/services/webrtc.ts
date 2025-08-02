@@ -14,11 +14,35 @@ export interface WebRTCMessage {
   data: any;
 }
 
+export interface StreamInfo {
+  hasAudio: boolean;
+  hasVideo: boolean;
+  codecs: Array<{
+    kind: string;
+    codec: string;
+    enabled: boolean;
+    readyState: string;
+  }>;
+}
+
 export interface WebRTCConnectionState {
   status: 'connected' | 'connecting' | 'disconnected';
-  iceConnectionState: RTCIceConnectionState;
-  connectionState: RTCPeerConnectionState;
-  signalingState: RTCSignalingState;
+  iceConnectionState: RTCIceConnectionState | 'disconnected';
+  connectionState: RTCPeerConnectionState | 'disconnected';
+  signalingState: RTCSignalingState | 'closed';
+  clientId?: string;
+  desktopUrl?: string;
+  timestamp?: string;
+  streamInfo?: StreamInfo;
+}
+
+// Déclaration d'interface pour l'événement d'erreur de candidat ICE
+interface RTCIceCandidateErrorEvent extends Event {
+  readonly address: string | null;
+  readonly port: number | null;
+  readonly url: string;
+  readonly errorCode: number;
+  readonly errorText: string;
 }
 
 export class WebRTCService extends EventEmitter {
@@ -178,8 +202,11 @@ export class WebRTCService extends EventEmitter {
       let lastIceState: RTCIceConnectionState | undefined;
       let iceStateChangeTime = Date.now();
       
+      // Gestion unifiée des états de connexion ICE
       this.peerConnection.oniceconnectionstatechange = () => {
-        const newState = this.peerConnection?.iceConnectionState;
+        if (!this.peerConnection) return;
+        
+        const newState = this.peerConnection.iceConnectionState;
         const prevState = lastIceState;
         lastIceState = newState;
         
@@ -192,16 +219,16 @@ export class WebRTCService extends EventEmitter {
           previousState: prevState,
           newState: newState,
           timeInPrevStateMs: timeInPrevState,
-          signalingState: this.peerConnection?.signalingState,
-          connectionState: this.peerConnection?.connectionState,
-          iceGatheringState: this.peerConnection?.iceGatheringState,
-          hasLocalDescription: !!this.peerConnection?.localDescription,
-          hasRemoteDescription: !!this.peerConnection?.remoteDescription,
-          localSdp: this.peerConnection?.localDescription?.sdp?.substring(0, 100) + '...',
-          remoteSdp: this.peerConnection?.remoteDescription?.sdp?.substring(0, 100) + '...'
+          signalingState: this.peerConnection.signalingState,
+          connectionState: this.peerConnection.connectionState,
+          iceGatheringState: this.peerConnection.iceGatheringState,
+          hasLocalDescription: !!this.peerConnection.localDescription,
+          hasRemoteDescription: !!this.peerConnection.remoteDescription,
+          localSdp: this.peerConnection.localDescription?.sdp?.substring(0, 100) + '...',
+          remoteSdp: this.peerConnection.remoteDescription?.sdp?.substring(0, 100) + '...'
         };
         
-        console.log(`[WebRTC] ICE Connection State: ${prevState} -> ${newState} (${timeInPrevState}ms in previous state)`, iceContext);
+        console.log(`[WebRTC] ICE Connection State: ${prevState || 'none'} -> ${newState} (${timeInPrevState}ms in previous state)`, iceContext);
         
         // Gestion des états de connexion ICE
         switch (newState) {
@@ -230,6 +257,12 @@ export class WebRTCService extends EventEmitter {
               this.peerConnection?.restartIce();
             } else {
               console.error('[WebRTC] Max ICE restart attempts reached, giving up');
+              // Notifier l'utilisateur de l'échec de la connexion
+              this.emit('connection-error', {
+                type: 'ice-failed',
+                message: 'Échec de la connexion ICE après plusieurs tentatives',
+                details: iceContext
+              });
             }
             break;
             
@@ -249,53 +282,124 @@ export class WebRTCService extends EventEmitter {
         this.emitConnectionStateChange();
       };
       
-      // Log ICE gathering state changes
-      this.peerConnection.onicegatheringstatechange = () => {
-        console.log(`[WebRTC] ICE Gathering State: ${this.peerConnection?.iceGatheringState}`);
-      };
-      
-      // Log ICE candidates as they're gathered
+      // Gestion unifiée des candidats ICE
       this.peerConnection.onicecandidate = (event) => {
+        if (!this.peerConnection) return;
+        
         if (event.candidate) {
-          console.log('[WebRTC] Generated ICE candidate:', {
+          const candidateInfo = {
+            timestamp: new Date().toISOString(),
             candidate: event.candidate.candidate,
             sdpMid: event.candidate.sdpMid,
-            sdpMLineIndex: event.candidate.sdpMLineIndex
-          });
+            sdpMLineIndex: event.candidate.sdpMLineIndex,
+            protocol: event.candidate.protocol,
+            address: event.candidate.address,
+            port: event.candidate.port,
+            type: event.candidate.type,
+            tcpType: event.candidate.tcpType,
+            relatedAddress: event.candidate.relatedAddress,
+            relatedPort: event.candidate.relatedPort,
+            usernameFragment: event.candidate.usernameFragment,
+            networkCost: event.candidate.networkCost
+          };
           
-          // Send the ICE candidate to the remote peer
+          console.log('[WebRTC] Generated ICE candidate:', candidateInfo);
+          
+          // Envoyer le candidat ICE au pair distant
           this.sendSignalingMessage(ws, {
             type: 'ice-candidate',
             data: event.candidate
           });
         } else {
           console.log('[WebRTC] All ICE candidates have been generated');
+          console.log('[WebRTC] Final ICE gathering state:', this.peerConnection.iceGatheringState);
+          
+          // Vérifier si nous avons une description locale
+          if (this.peerConnection.localDescription) {
+            console.log('[WebRTC] Local SDP (truncated):', 
+              this.peerConnection.localDescription.sdp?.substring(0, 200) + '...');
+          }
         }
       };
-
-      // Set up event listeners
-      this.peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          this.sendSignalingMessage(ws, {
-            type: 'ice-candidate',
-            data: event.candidate
-          });
-        }
-      };
-
-      this.peerConnection.oniceconnectionstatechange = () => {
-        console.log('[WebRTC] ICE connection state:', this.peerConnection?.iceConnectionState);
-        this.emitConnectionStateChange();
-      };
-
+      
+      // Gestion des changements d'état de la connexion
       this.peerConnection.onconnectionstatechange = () => {
-        console.log('[WebRTC] Connection state:', this.peerConnection?.connectionState);
+        if (!this.peerConnection) return;
+        
+        const state = this.peerConnection.connectionState;
+        console.log(`[WebRTC] Connection state changed to: ${state}`, {
+          timestamp: new Date().toISOString(),
+          iceConnectionState: this.peerConnection.iceConnectionState,
+          iceGatheringState: this.peerConnection.iceGatheringState,
+          signalingState: this.peerConnection.signalingState
+        });
+        
+        // Gestion des transitions d'état de la connexion
+        switch (state) {
+          case 'connected':
+            console.log('[WebRTC] WebRTC connection established successfully');
+            break;
+            
+          case 'disconnected':
+          case 'failed':
+            console.warn(`[WebRTC] WebRTC connection ${state}`, {
+              iceConnectionState: this.peerConnection.iceConnectionState,
+              iceGatheringState: this.peerConnection.iceGatheringState
+            });
+            break;
+            
+          case 'closed':
+            console.log('[WebRTC] WebRTC connection closed');
+            break;
+        }
+        
         this.emitConnectionStateChange();
       };
-
+      
+      // Gestion des changements d'état de signalisation
       this.peerConnection.onsignalingstatechange = () => {
-        console.log('[WebRTC] Signaling state:', this.peerConnection?.signalingState);
+        if (!this.peerConnection) return;
+        
+        console.log(`[WebRTC] Signaling state changed to: ${this.peerConnection.signalingState}`, {
+          timestamp: new Date().toISOString(),
+          connectionState: this.peerConnection.connectionState,
+          iceConnectionState: this.peerConnection.iceConnectionState
+        });
+        
         this.emitConnectionStateChange();
+      };
+      
+      // Gestion des changements d'état de collecte ICE
+      this.peerConnection.onicegatheringstatechange = () => {
+        if (!this.peerConnection) return;
+        
+        console.log(`[WebRTC] ICE gathering state changed to: ${this.peerConnection.iceGatheringState}`, {
+          timestamp: new Date().toISOString(),
+          connectionState: this.peerConnection.connectionState,
+          iceConnectionState: this.peerConnection.iceConnectionState
+        });
+      };
+      
+      // Configuration initiale pour la gestion des erreurs réseau
+      this.peerConnection.onicecandidateerror = (event: RTCIceCandidateErrorEvent) => {
+        console.error('[WebRTC] ICE candidate error:', {
+          timestamp: new Date().toISOString(),
+          errorCode: event.errorCode,
+          errorText: event.errorText,
+          url: event.url,
+          address: event.address,
+          port: event.port
+        });
+        
+        this.emit('connection-error', {
+          type: 'ice-candidate-error',
+          message: `Erreur de candidat ICE: ${event.errorText} (${event.errorCode})`,
+          details: {
+            url: event.url,
+            address: event.address,
+            port: event.port
+          }
+        });
       };
 
       // Handle incoming audio tracks
@@ -433,19 +537,47 @@ export class WebRTCService extends EventEmitter {
     }
   }
 
-  private emitConnectionStateChange(): void {
-    const state = this.getConnectionState();
-    this.emit('connection-change', state);
+  public getConnectionState(): WebRTCConnectionState {
+    if (!this.peerConnection) {
+      return {
+        status: 'disconnected',
+        iceConnectionState: 'disconnected',
+        connectionState: 'disconnected',
+        signalingState: 'closed',
+        clientId: 'desktop',
+        desktopUrl: `ws://${config.webrtc.host}:${config.webrtc.signalingPort}`,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    return {
+      status: this.peerConnection.connectionState === 'connected' ? 'connected' : 
+             this.peerConnection.connectionState === 'connecting' ? 'connecting' : 'disconnected',
+      iceConnectionState: this.peerConnection.iceConnectionState,
+      connectionState: this.peerConnection.connectionState,
+      signalingState: this.peerConnection.signalingState,
+      clientId: 'desktop',
+      desktopUrl: `ws://${config.webrtc.host}:${config.webrtc.signalingPort}`,
+      timestamp: new Date().toISOString(),
+      streamInfo: {
+        hasAudio: this.peerConnection.getReceivers().some(r => r.track && r.track.kind === 'audio'),
+        hasVideo: this.peerConnection.getReceivers().some(r => r.track && r.track.kind === 'video'),
+        codecs: this.peerConnection.getReceivers()
+          .filter(r => r.track)
+          .map(r => ({
+            kind: r.track!.kind,
+            codec: r.getParameters().codecs[0]?.mimeType || 'unknown',
+            enabled: r.track!.enabled,
+            readyState: r.track!.readyState
+          }))
+      }
+    };
   }
 
-  public getConnectionState(): WebRTCConnectionState {
-    return {
-      status: this.peerConnection?.connectionState === 'connected' ? 'connected' : 
-             this.peerConnection ? 'connecting' : 'disconnected',
-      iceConnectionState: this.peerConnection?.iceConnectionState || 'new',
-      connectionState: this.peerConnection?.connectionState || 'new',
-      signalingState: this.peerConnection?.signalingState || 'stable'
-    };
+  private emitConnectionStateChange(): void {
+    const connectionState = this.getConnectionState();
+    console.log('[WebRTC] Connection state changed:', connectionState);
+    this.emit('connection-state-change', connectionState);
   }
 
   public async setVolume(volume: number): Promise<boolean> {

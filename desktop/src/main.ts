@@ -14,8 +14,58 @@ class LiveTradApp {
         this.mainWindow = new MainWindow();
         this.wsService = new WebSocketService();
         this.webrtcService = new WebRTCService();
+        this.setupWebRTCEventListeners();
         this.initApp();
         this.setupIPC();
+    }
+
+    private setupWebRTCEventListeners(): void {
+        this.webrtcService.on('connection-state-change', (state) => {
+            console.log('[Main] WebRTC connection state changed:', state);
+            const mainWindow = this.mainWindow.getWindow();
+            if (mainWindow) {
+                mainWindow.webContents.send('connection-change', {
+                    status: state.status,
+                    details: {
+                        clientId: state.clientId,
+                        desktopUrl: state.desktopUrl,
+                        streamInfo: state.streamInfo,
+                        timestamp: state.timestamp || new Date().toISOString(),
+                        iceState: state.iceConnectionState,
+                        connectionState: state.connectionState,
+                        signalingState: state.signalingState
+                    }
+                });
+            }
+        });
+
+        this.webrtcService.on('transcription', (transcriptionData) => {
+            const mainWindow = this.mainWindow.getWindow();
+            if (mainWindow) {
+                mainWindow.webContents.send('transcription', transcriptionData);
+            }
+        });
+
+        this.webrtcService.on('deepgram-connected', () => {
+            const mainWindow = this.mainWindow.getWindow();
+            if (mainWindow) {
+                mainWindow.webContents.send('deepgram-connected');
+            }
+        });
+
+        this.webrtcService.on('deepgram-disconnected', () => {
+            const mainWindow = this.mainWindow.getWindow();
+            if (mainWindow) {
+                mainWindow.webContents.send('deepgram-disconnected');
+            }
+        });
+
+        this.webrtcService.on('deepgram-error', (error) => {
+            const mainWindow = this.mainWindow.getWindow();
+            if (mainWindow) {
+                mainWindow.webContents.send('deepgram-error', error);
+            }
+        });
     }
 
     private setupIPC(): void {

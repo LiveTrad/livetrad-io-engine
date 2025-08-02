@@ -17,33 +17,106 @@ const MAX_TRANSCRIPTION_HISTORY = 50;
 let currentInterimText = '';
 let detectedLanguage = 'Auto';
 
-// Update connection status
+// Format date for display
+function formatDateTime(timestamp) {
+    if (!timestamp) return 'N/A';
+    try {
+        const date = new Date(timestamp);
+        return date.toLocaleString();
+    } catch (e) {
+        console.error('Error formatting date:', e);
+        return 'N/A';
+    }
+}
+
+// Update connection status with detailed information
 function updateStatus(isConnected, details = {}) {
     const statusElement = document.getElementById('status');
     const statsElement = document.getElementById('stats');
-
+    const connectionDetailsElement = document.getElementById('connection-details');
+    const streamInfoElement = document.getElementById('stream-info');
+    const connectionTime = details.timestamp ? new Date(details.timestamp) : new Date();
+    
     if (isConnected) {
         statusElement.className = 'status connected';
-        statusElement.textContent = 'Connected to extension';
+        statusElement.textContent = 'Connected';
+        statusElement.title = `Connected at ${connectionTime.toLocaleString()}`;
         
-        // Update stats
-        statsElement.innerHTML = `
+        // Update connection details
+        let detailsHtml = `
             <h3>Connection Details</h3>
             <div class="stat-item">
                 <strong>Client ID:</strong> ${details.clientId || 'Unknown'}
             </div>
             <div class="stat-item">
-                <strong>Connected Since:</strong> ${new Date().toLocaleTimeString()}
+                <strong>Desktop URL:</strong> ${details.desktopUrl || 'N/A'}
             </div>
             <div class="stat-item">
-                <strong>Status:</strong> Active
+                <strong>Connected Since:</strong> ${formatDateTime(details.timestamp)}
+            </div>
+            <div class="stat-item">
+                <strong>ICE State:</strong> <span class="state-${details.iceState?.toLowerCase() || 'unknown'}">${details.iceState || 'Unknown'}</span>
+            </div>
+            <div class="stat-item">
+                <strong>Connection State:</strong> <span class="state-${details.connectionState?.toLowerCase() || 'unknown'}">${details.connectionState || 'Unknown'}</span>
+            </div>
+            <div class="stat-item">
+                <strong>Signaling State:</strong> ${details.signalingState || 'Unknown'}
             </div>
         `;
+        
+        // Update stream info if available
+        let streamInfoHtml = '';
+        if (details.streamInfo) {
+            const { hasAudio, hasVideo, codecs } = details.streamInfo;
+            streamInfoHtml = `
+                <h3>Stream Information</h3>
+                <div class="stat-item">
+                    <strong>Audio:</strong> ${hasAudio ? '✅ Active' : '❌ Not active'}
+                </div>
+                <div class="stat-item">
+                    <strong>Video:</strong> ${hasVideo ? '✅ Active' : '❌ Not active'}
+                </div>
+            `;
+            
+            if (codecs && codecs.length > 0) {
+                streamInfoHtml += `
+                    <div class="stat-subsection">
+                        <h4>Codecs</h4>
+                        ${codecs.map(codec => `
+                            <div class="stat-item">
+                                <strong>${codec.kind}:</strong> ${codec.codec.split('/')[1] || codec.codec}
+                                <span class="codec-state">
+                                    ${codec.enabled ? '✅' : '❌'} ${codec.readyState}
+                                </span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+        }
+        
+        statsElement.innerHTML = detailsHtml;
+        streamInfoElement.innerHTML = streamInfoHtml;
+        
+        // Show both sections
         statsElement.style.display = 'block';
+        streamInfoElement.style.display = 'block';
     } else {
         statusElement.className = 'status disconnected';
-        statusElement.textContent = 'Waiting for connection...';
-        statsElement.style.display = 'none';
+        statusElement.textContent = 'Disconnected';
+        statusElement.title = 'Waiting for connection...';
+        
+        // Clear details but keep the containers
+        statsElement.innerHTML = '<h3>Connection Details</h3><p>Not connected</p>';
+        streamInfoElement.innerHTML = '<h3>Stream Information</h3><p>No active stream</p>';
+        
+        // Show both sections but with disabled state
+        statsElement.style.display = 'block';
+        streamInfoElement.style.display = 'block';
+        statsElement.classList.add('disabled');
+        streamInfoElement.classList.add('disabled');
+        
         resetAudioMonitor();
     }
 }
