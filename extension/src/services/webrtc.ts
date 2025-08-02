@@ -379,7 +379,7 @@ export class WebRTCService extends EventEmitter {
       iceConnectionState: this.peerConnection.iceConnectionState,
       connectionState: this.peerConnection.connectionState,
       signalingState: this.peerConnection.signalingState,
-      desktopUrl: ''
+      desktopUrl: this.config.signalingUrl
     };
     
     const lastState = this.lastSyncedState;

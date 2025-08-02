@@ -361,7 +361,7 @@ export class WebRTCService extends EventEmitter {
   }
 
   private handleControlMessage(message: any): void {
-    console.log('[WebRTC] Control message received:', message);
+    console.log('[WebRTC] Control message received:', JSON.stringify(message, null, 2));
     
     switch (message.type) {
       case 'volume':
@@ -376,6 +376,12 @@ export class WebRTCService extends EventEmitter {
         } else {
           this.stopTranscription();
         }
+        break;
+      case 'sync-state':
+        this.handleSyncStateMessage(message);
+        break;
+      case 'heartbeat':
+        this.handleHeartbeatMessage(message);
         break;
       default:
         console.warn('[WebRTC] Unknown control message type:', message.type);
@@ -497,8 +503,73 @@ export class WebRTCService extends EventEmitter {
     });
   }
 
+  private handleSyncStateMessage(message: any): void {
+    try {
+      const { state, clientId, timestamp } = message;
+      console.log(`[WebRTC] Syncing state with client ${clientId}:`, state);
+      
+      // Mettre à jour l'état de connexion dans l'UI
+      this.emit('connection-change', {
+        status: state.status,
+        clientId,
+        connectionState: state.connectionState,
+        iceConnectionState: state.iceConnectionState,
+        signalingState: state.signalingState,
+        desktopUrl: state.desktopUrl,
+        timestamp: new Date(timestamp).toLocaleString()
+      });
+      
+      // Répondre avec l'état actuel du serveur
+      if (this.peerConnection && this.connections.size > 0) {
+        const currentState = this.getConnectionState();
+        const ws = this.connections.keys().next().value;
+        if (ws) {
+          this.sendSignalingMessage(ws, {
+            type: 'control',
+            data: {
+              type: 'sync-state-ack',
+              state: currentState,
+              clientId: 'desktop',
+              timestamp: Date.now()
+            }
+          });
+        }
+      }
+    } catch (error) {
+      console.error('[WebRTC] Error handling sync state message:', error);
+    }
+  }
+
+  private handleHeartbeatMessage(message: any): void {
+    try {
+      const { clientId, timestamp } = message;
+      console.log(`[WebRTC] Heartbeat received from client ${clientId} at ${new Date(timestamp).toISOString()}`);
+      
+      // Mettre à jour le timestamp du dernier heartbeat
+      this.emit('heartbeat', { clientId, timestamp });
+      
+      // Répondre avec un accusé de réception
+      if (this.peerConnection && this.connections.size > 0) {
+        const ws = this.connections.keys().next().value;
+        if (ws) {
+          this.sendSignalingMessage(ws, {
+            type: 'control',
+            data: {
+              type: 'heartbeat-ack',
+              clientId: 'desktop',
+              timestamp: Date.now(),
+              serverTime: new Date().toISOString()
+            }
+          });
+        }
+      }
+    } catch (error) {
+      console.error('[WebRTC] Error handling heartbeat message:', error);
+    }
+  }
+
   private generateClientId(): string {
-    return Math.random().toString(36).substr(2, 9);
+    return Math.random().toString(36).substring(2, 10);
   }
 
   public close(): void {
