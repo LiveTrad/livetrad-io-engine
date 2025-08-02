@@ -463,35 +463,19 @@ class Sidebar {
                     throw new Error('Failed to activate the selected tab. Please try again.');
                 }
 
-                // Request tab capture permission
-                const stream = await new Promise<MediaStream>((resolve, reject) => {
-                    chrome.tabCapture.capture(
-                        { 
-                            audio: true,
-                            video: false,
-                            audioConstraints: {
-                                mandatory: {
-                                    chromeMediaSource: 'tab'
-                                }
-                            }
-                        },
-                        (stream) => {
-                            if (chrome.runtime.lastError) {
-                                reject(new Error(chrome.runtime.lastError.message));
-                            } else if (!stream) {
-                                reject(new Error('Failed to capture tab audio. Please ensure you have granted the necessary permissions and the tab is active.'));
-                            } else {
-                                resolve(stream);
-                            }
-                        }
-                    );
+                // Send message to content script to start audio capture
+                const response = await chrome.tabs.sendMessage(Number(this.selectedTabId), {
+                    type: 'CAPTURE_TAB_AUDIO'
                 });
 
-                // Start streaming
-                const response = await chrome.runtime.sendMessage({ 
+                if (!response || !response.success) {
+                    throw new Error(response?.error || 'Failed to start audio capture');
+                }
+
+                // Start streaming with the captured stream
+                const startResponse = await chrome.runtime.sendMessage({ 
                     type: 'START_STREAMING', 
-                    tabId: Number(this.selectedTabId),
-                    stream: stream
+                    tabId: Number(this.selectedTabId)
                 });
                 if (!response.success) {
                     throw new Error(response.error);
