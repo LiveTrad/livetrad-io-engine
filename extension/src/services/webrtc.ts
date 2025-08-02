@@ -26,9 +26,15 @@ export class WebRTCService extends EventEmitter {
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private iceGatheringTimeout: NodeJS.Timeout | null = null;
   private connectionStartTime: number = 0;
-  private lastIceState: RTCIceConnectionState | null = null;
+  private lastIceState: RTCIceConnectionState | null | undefined = undefined;
   private iceRestartAttempts: number = 0;
   private maxIceRestartAttempts: number = 3;
+  private lastSyncedState: WebRTCConnectionState | null = null;
+  private clientId: string = `ext-${Math.random().toString(36).substring(2, 10)}`;
+  private lastHeartbeat: number = 0;
+  private heartbeatInterval: NodeJS.Timeout | null = null;
+  private readonly HEARTBEAT_INTERVAL = 10000; // 10 secondes
+  private readonly HEARTBEAT_TIMEOUT = 30000; // 30 secondes sans réponse = déconnexion
 
   constructor(config: WebRTCConfig = defaultWebRTCConfig, audioConfig: AudioConfig = defaultAudioConfig) {
     super();
@@ -67,7 +73,10 @@ export class WebRTCService extends EventEmitter {
             await this.initializePeerConnection();
             resolve(this.getConnectionState());
           } catch (error) {
-            logger.errorWithDetails('WebRTC', error, { phase: 'initializePeerConnection' });
+            logger.error('WebRTC', 'Failed to initialize peer connection', { 
+              error: error instanceof Error ? error.message : String(error),
+              phase: 'initializePeerConnection' 
+            });
             this.cleanup();
             reject(error);
           }
@@ -113,7 +122,6 @@ export class WebRTCService extends EventEmitter {
         iceServers: connectionConfig.iceServers?.map(s => ({
           ...s,
           credential: s.credential ? '***' : undefined,
-          // Masquer également le nom d'utilisateur s'il est présent
           username: s.username ? '***' : undefined
         }))
       };
@@ -145,7 +153,7 @@ export class WebRTCService extends EventEmitter {
             address: candidate.address || 'unknown',
             port: candidate.port || 0,
             candidateType: candidate.candidate ? (candidate.candidate.split(' ')[7] || 'unknown') : 'unknown',
-            component: candidate.component === 1 ? 'RTP' : 'RTCP'
+            component: candidate && candidate.component ? (Number(candidate.component) === 1 ? 'RTP' : 'RTCP') : 'unknown'
           };
           
           logger.debug('WebRTC', `New ICE candidate (${elapsed}ms):`, candidateInfo);
@@ -183,17 +191,65 @@ export class WebRTCService extends EventEmitter {
       };
 
       this.peerConnection.oniceconnectionstatechange = () => {
-        console.log('[WebRTC] ICE connection state:', this.peerConnection?.iceConnectionState);
+        const newState = this.peerConnection?.iceConnectionState;
+        const prevState = this.lastIceState;
+        this.lastIceState = newState;
+        
+        // Journalisation détaillée avec timestamp et contexte
+        const iceContext = {
+          timestamp: new Date().toISOString(),
+          previousState: prevState,
+          newState: newState,
+          signalingState: this.peerConnection?.signalingState,
+          connectionState: this.peerConnection?.connectionState,
+          hasLocalDescription: !!this.peerConnection?.localDescription,
+          hasRemoteDescription: !!this.peerConnection?.remoteDescription,
+          iceGatheringState: this.peerConnection?.iceGatheringState,
+          iceConnectionState: newState
+        };
+        
+        logger.info('WebRTC', `ICE connection state changed: ${prevState} -> ${newState}`, iceContext);
+        
+        // Gestion des erreurs et tentatives de récupération
+        if (newState === 'failed') {
+          logger.warn('WebRTC', 'ICE connection failed, attempting recovery...', iceContext);
+          this.checkConnectionHealth();
+        } else if (newState === 'disconnected') {
+          logger.warn('WebRTC', 'ICE connection disconnected', iceContext);
+          // Essayer de restaurer la connexion
+          setTimeout(() => this.checkConnectionHealth(), 1000);
+        }
+        
         this.emitConnectionStateChange();
       };
 
       this.peerConnection.onconnectionstatechange = () => {
-        console.log('[WebRTC] Connection state:', this.peerConnection?.connectionState);
+        const state = this.peerConnection?.connectionState;
+        logger.info('WebRTC', `Connection state changed: ${state}`, {
+          timestamp: new Date().toISOString(),
+          iceConnectionState: this.peerConnection?.iceConnectionState,
+          signalingState: this.peerConnection?.signalingState,
+          iceGatheringState: this.peerConnection?.iceGatheringState
+        });
         this.emitConnectionStateChange();
       };
 
       this.peerConnection.onsignalingstatechange = () => {
-        console.log('[WebRTC] Signaling state:', this.peerConnection?.signalingState);
+        const state = this.peerConnection?.signalingState;
+        logger.info('WebRTC', `Signaling state changed: ${state}`, {
+          timestamp: new Date().toISOString(),
+          iceConnectionState: this.peerConnection?.iceConnectionState,
+          connectionState: this.peerConnection?.connectionState,
+          hasLocalDescription: !!this.peerConnection?.localDescription,
+          hasRemoteDescription: !!this.peerConnection?.remoteDescription
+        });
+        
+        // Gestion des erreurs spécifiques à l'état de signalisation
+        if (state === 'closed') {
+          logger.warn('WebRTC', 'Signaling connection closed, cleaning up...');
+          this.cleanup();
+        }
+        
         this.emitConnectionStateChange();
       };
 
@@ -228,6 +284,9 @@ export class WebRTCService extends EventEmitter {
         data: offer
       });
 
+      // Démarrer le mécanisme de heartbeat après l'établissement de la connexion
+      this.startHeartbeat();
+      
     } catch (error) {
       console.error('[WebRTC] Failed to initialize peer connection:', error);
       throw error;
@@ -235,17 +294,34 @@ export class WebRTCService extends EventEmitter {
   }
 
   private handleSignalingMessage(message: WebRTCMessage): void {
-    if (!this.peerConnection) return;
+    if (!this.peerConnection) {
+      logger.warn('WebRTC', 'Received signaling message but no peer connection exists');
+      return;
+    }
+
+    // Traiter les messages de contrôle comme les heartbeats
+    if (message.type === 'control' && message.data?.type === 'heartbeat') {
+      this.handleHeartbeat();
+      return;
+    }
 
     switch (message.type) {
       case 'answer':
-        this.peerConnection.setRemoteDescription(new RTCSessionDescription(message.data));
+        this.peerConnection.setRemoteDescription(new RTCSessionDescription(message.data))
+          .catch(error => {
+            logger.error('WebRTC', 'Failed to set remote description', error);
+          });
         break;
       case 'ice-candidate':
-        this.peerConnection.addIceCandidate(new RTCIceCandidate(message.data));
+        if (message.data) {
+          this.peerConnection.addIceCandidate(new RTCIceCandidate(message.data))
+            .catch(error => {
+              logger.warn('WebRTC', 'Failed to add ICE candidate', error);
+            });
+        }
         break;
       default:
-        console.warn('[WebRTC] Unknown signaling message type:', message.type);
+        logger.warn('WebRTC', 'Unknown signaling message type:', { type: message.type });
     }
   }
 
@@ -295,17 +371,121 @@ export class WebRTCService extends EventEmitter {
     };
   }
 
+  private syncConnectionState(force: boolean = false): void {
+    if (!this.peerConnection) return;
+    
+    const currentState: WebRTCConnectionState = {
+      status: this.peerConnection.connectionState === 'connected' ? 'connected' : 'connecting',
+      iceConnectionState: this.peerConnection.iceConnectionState,
+      connectionState: this.peerConnection.connectionState,
+      signalingState: this.peerConnection.signalingState,
+      desktopUrl: ''
+    };
+    
+    const lastState = this.lastSyncedState;
+    const stateChanged = !lastState || 
+      lastState.iceConnectionState !== currentState.iceConnectionState ||
+      lastState.connectionState !== currentState.connectionState ||
+      lastState.signalingState !== currentState.signalingState;
+    
+    if (stateChanged || force) {
+      this.lastSyncedState = { ...currentState };
+      
+      if (this.signalingWebSocket?.readyState === WebSocket.OPEN) {
+        const syncMessage: WebRTCMessage = {
+          type: 'control',
+          data: {
+            type: 'sync-state',
+            state: currentState,
+            timestamp: Date.now(),
+            clientId: this.clientId
+          }
+        };
+        
+        this.signalingWebSocket.send(JSON.stringify(syncMessage));
+        logger.debug('WebRTC', 'Sent state sync', { 
+          previousState: lastState, 
+          newState: currentState 
+        });
+      }
+    }
+    
+    this.emit('connectionstatechange', currentState);
+  }
+  
   private emitConnectionStateChange(): void {
-    // This will be used by the audio capture service
+    this.syncConnectionState();
     const state = this.getConnectionState();
     console.log('[WebRTC] Connection state changed:', state);
   }
 
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.lastHeartbeat = Date.now();
+    this.heartbeatInterval = setInterval(() => {
+      this.sendHeartbeat();
+      this.checkConnectionHealth();
+    }, this.HEARTBEAT_INTERVAL);
+    logger.debug('WebRTC', 'Heartbeat started');
+  }
+  
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+      logger.debug('WebRTC', 'Heartbeat stopped');
+    }
+  }
+  
+  private sendHeartbeat(): void {
+    if (this.signalingWebSocket?.readyState === WebSocket.OPEN) {
+      const heartbeatMsg: WebRTCMessage = {
+        type: 'control',
+        data: {
+          type: 'heartbeat',
+          clientId: this.clientId,
+          timestamp: Date.now()
+        }
+      };
+      this.signalingWebSocket.send(JSON.stringify(heartbeatMsg));
+      logger.debug('WebRTC', 'Heartbeat sent');
+    }
+  }
+  
+  private handleHeartbeat(): void {
+    this.lastHeartbeat = Date.now();
+    logger.debug('WebRTC', 'Heartbeat received');
+  }
+  
+  private checkHeartbeat(): void {
+    if (this.lastHeartbeat > 0 && (Date.now() - this.lastHeartbeat) > this.HEARTBEAT_TIMEOUT) {
+      logger.warn('WebRTC', 'Heartbeat timeout - connection may be dead');
+      this.handleDisconnect();
+    }
+  }
+  
   public disconnect(): void {
     this.isConnecting = false;
+    this.stopHeartbeat();
+    
+    if (this.signalingWebSocket?.readyState === WebSocket.OPEN) {
+      const disconnectMsg: WebRTCMessage = {
+        type: 'control',
+        data: {
+          type: 'disconnect',
+          clientId: this.clientId,
+          timestamp: Date.now()
+        }
+      };
+      this.signalingWebSocket.send(JSON.stringify(disconnectMsg));
+    }
     
     if (this.dataChannel) {
-      this.dataChannel.close();
+      try {
+        this.dataChannel.close();
+      } catch (error) {
+        console.error('Error closing data channel:', error);
+      }
       this.dataChannel = null;
     }
 
@@ -325,9 +505,6 @@ export class WebRTCService extends EventEmitter {
     }
   }
 
-  /**
-   * Vérifie la santé de la connexion et tente des réparations si nécessaire
-   */
   private checkConnectionHealth(): void {
     if (!this.peerConnection) {
       logger.warn('WebRTC', 'Cannot check connection health: no peer connection');
@@ -343,18 +520,18 @@ export class WebRTCService extends EventEmitter {
       signalingState: this.peerConnection.signalingState
     });
 
-    // Si la connexion a échoué, tenter une récupération
     if (iceConnectionState === 'failed' || connectionState === 'failed') {
       logger.warn('WebRTC', 'Connection in failed state, attempting recovery...');
       
-      // Si nous n'avons pas dépassé le nombre maximum de tentatives de redémarrage ICE
       if (this.iceRestartAttempts < this.maxIceRestartAttempts) {
         this.iceRestartAttempts++;
         logger.info('WebRTC', `Initiating ICE restart (attempt ${this.iceRestartAttempts}/${this.maxIceRestartAttempts})`);
         
-        // Créer une nouvelle offre pour forcer un redémarrage ICE
         this.createAndSendOffer({ iceRestart: true }).catch(error => {
-          logger.errorWithDetails('WebRTC', error, { phase: 'iceRestart' });
+          logger.error('WebRTC', 'ICE restart failed', { 
+            error: error instanceof Error ? error.message : String(error),
+            phase: 'iceRestart' 
+          });
         });
       } else {
         logger.error('WebRTC', 'Max ICE restart attempts reached, giving up');
@@ -363,9 +540,6 @@ export class WebRTCService extends EventEmitter {
     }
   }
 
-  /**
-   * Crée et envoie une offre SDP
-   */
   private async createAndSendOffer(options: RTCOfferOptions = {}): Promise<void> {
     if (!this.peerConnection) {
       throw new Error('No active peer connection');
@@ -375,10 +549,8 @@ export class WebRTCService extends EventEmitter {
       logger.info('WebRTC', 'Creating offer with options:', options);
       const offer = await this.peerConnection.createOffer(options);
       
-      // Mettre à jour la description locale
       await this.peerConnection.setLocalDescription(offer);
       
-      // Envoyer l'offre via le canal de signalisation
       if (this.signalingWebSocket?.readyState === WebSocket.OPEN) {
         this.signalingWebSocket.send(JSON.stringify({
           type: 'offer',
@@ -394,13 +566,9 @@ export class WebRTCService extends EventEmitter {
     }
   }
 
-  /**
-   * Nettoie toutes les ressources et connexions
-   */
   private cleanup(): void {
     logger.debug('WebRTC', 'Cleaning up WebRTC resources');
     
-    // Nettoyer les timeouts
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
@@ -411,22 +579,22 @@ export class WebRTCService extends EventEmitter {
       this.iceGatheringTimeout = null;
     }
     
-    // Fermer la connexion WebSocket
     if (this.signalingWebSocket) {
       try {
         this.signalingWebSocket.close();
-      } catch (error) {
-        logger.error('WebRTC', 'Error closing signaling socket:', error);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error('WebRTC', 'Error closing signaling socket', { error: errorMessage });
       }
       this.signalingWebSocket = null;
     }
     
-    // Fermer la connexion peer
     if (this.peerConnection) {
       try {
         this.peerConnection.close();
-      } catch (error) {
-        logger.error('WebRTC', 'Error closing peer connection:', error);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error('WebRTC', 'Error closing peer connection', { error: errorMessage });
       }
       this.peerConnection = null;
     }
@@ -435,9 +603,6 @@ export class WebRTCService extends EventEmitter {
     this.isConnecting = false;
   }
   
-  /**
-   * Gère la déconnexion et tente une reconnexion si nécessaire
-   */
   private handleDisconnect(): void {
     logger.info('WebRTC', `Handling disconnect, reconnect attempt ${this.reconnectAttempts + 1}/${this.config.maxReconnectAttempts}`);
     
@@ -461,4 +626,4 @@ export class WebRTCService extends EventEmitter {
       this.emit('disconnected');
     }
   }
-} 
+}

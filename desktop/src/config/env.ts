@@ -56,7 +56,8 @@ export const config = {
         iceServersConfig: {
             transportPolicy: 'all',
             iceCandidatePoolSize: 10
-        }
+        },
+        maxIceRestartAttempts: 3 // Nombre maximum de tentatives de redémarrage ICE
     },
     deepgram: {
         apiKey: getEnvVar('DEEPGRAM_API_KEY', ''),

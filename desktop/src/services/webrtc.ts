@@ -32,6 +32,7 @@ export class WebRTCService extends EventEmitter {
   private isMuted: boolean = false;
   private audioContext: AudioContext | null = null;
   private audioDestination: MediaStreamAudioDestinationNode | null = null;
+  private iceRestartAttempts: number = 0;
 
   constructor() {
     super();
@@ -173,26 +174,75 @@ export class WebRTCService extends EventEmitter {
         ]
       };
       
-      // Set up ICE connection state logging
+      // Configuration avancée du suivi des états ICE
+      let lastIceState: RTCIceConnectionState | undefined;
+      let iceStateChangeTime = Date.now();
+      
       this.peerConnection.oniceconnectionstatechange = () => {
-        const state = this.peerConnection?.iceConnectionState;
-        console.log(`[WebRTC] ICE Connection State: ${state}`);
+        const newState = this.peerConnection?.iceConnectionState;
+        const prevState = lastIceState;
+        lastIceState = newState;
         
-        // Handle different ICE connection states
-        switch (state) {
+        const now = Date.now();
+        const timeInPrevState = now - iceStateChangeTime;
+        iceStateChangeTime = now;
+        
+        const iceContext = {
+          timestamp: new Date().toISOString(),
+          previousState: prevState,
+          newState: newState,
+          timeInPrevStateMs: timeInPrevState,
+          signalingState: this.peerConnection?.signalingState,
+          connectionState: this.peerConnection?.connectionState,
+          iceGatheringState: this.peerConnection?.iceGatheringState,
+          hasLocalDescription: !!this.peerConnection?.localDescription,
+          hasRemoteDescription: !!this.peerConnection?.remoteDescription,
+          localSdp: this.peerConnection?.localDescription?.sdp?.substring(0, 100) + '...',
+          remoteSdp: this.peerConnection?.remoteDescription?.sdp?.substring(0, 100) + '...'
+        };
+        
+        console.log(`[WebRTC] ICE Connection State: ${prevState} -> ${newState} (${timeInPrevState}ms in previous state)`, iceContext);
+        
+        // Gestion des états de connexion ICE
+        switch (newState) {
           case 'connected':
-            console.log('[WebRTC] ICE connection established successfully');
+            console.log('[WebRTC] ICE connection established successfully', iceContext);
+            this.iceRestartAttempts = 0; // Réinitialiser le compteur de tentatives
             break;
+            
           case 'disconnected':
-            console.log('[WebRTC] ICE connection disconnected');
+            console.warn('[WebRTC] ICE connection disconnected', iceContext);
+            // Tenter de restaurer la connexion après un court délai
+            setTimeout(() => {
+              if (this.peerConnection?.iceConnectionState === 'disconnected') {
+                console.log('[WebRTC] Attempting to restore disconnected ICE connection...');
+                this.peerConnection?.restartIce();
+              }
+            }, 1000);
             break;
+            
           case 'failed':
-            console.error('[WebRTC] ICE connection failed');
-            // Try to restart ICE
-            this.peerConnection?.restartIce();
+            console.error('[WebRTC] ICE connection failed', iceContext);
+            // Tenter de redémarrer ICE avec un nombre limité de tentatives
+            if (this.iceRestartAttempts < (config.webrtc.maxIceRestartAttempts || 3)) {
+              this.iceRestartAttempts++;
+              console.warn(`[WebRTC] Restarting ICE (attempt ${this.iceRestartAttempts})...`);
+              this.peerConnection?.restartIce();
+            } else {
+              console.error('[WebRTC] Max ICE restart attempts reached, giving up');
+            }
             break;
+            
           case 'closed':
-            console.log('[WebRTC] ICE connection closed');
+            console.log('[WebRTC] ICE connection closed', iceContext);
+            break;
+            
+          case 'checking':
+            console.log('[WebRTC] ICE connection checking...', iceContext);
+            break;
+            
+          case 'completed':
+            console.log('[WebRTC] ICE connection completed', iceContext);
             break;
         }
         
