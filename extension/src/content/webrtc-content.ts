@@ -310,6 +310,7 @@ chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
                 sendResponse({ success: false, error: 'Invalid message format' });
                 return;
             }
+            
             switch (message.type) {
                 case 'CAPTURE_TAB_AUDIO':
                     try {
@@ -374,6 +375,24 @@ chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
                     }
                     break;
                     
+                case 'WEBRTC_CONNECT':
+                    try {
+                        const service = getOrCreateWebRTCService();
+                        const connectionState = await service.connect();
+                        console.log('[WebRTC Content] Successfully connected to WebRTC service. State:', connectionState);
+                        sendResponse({ 
+                            success: true, 
+                            state: connectionState 
+                        });
+                    } catch (error) {
+                        console.error('[WebRTC Content] Error connecting to WebRTC:', error);
+                        sendResponse({ 
+                            success: false, 
+                            error: `Failed to connect: ${(error as Error).message}` 
+                        });
+                    }
+                    break;
+
                 case 'WEBRTC_DISCONNECT':
                     try {
                         console.log('[WebRTC Content] Disconnecting from WebRTC...');
@@ -393,171 +412,83 @@ chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
                         });
                     }
                     break;
-                    
-                case 'WEBRTC_CONNECT':
+
+                case 'WEBRTC_GET_STATE':
                     try {
-                        const service = getOrCreateWebRTCService();
-                        const connectionState = await service.connect();
-                        console.log('[WebRTC Content] Successfully connected to WebRTC service. State:', connectionState);
-                        sendResponse({ 
-                            success: true, 
-                            state: connectionState 
-                        });
+                        if (!webrtcService) {
+                            // Si le service n'est pas encore initialisé, retourner un état par défaut
+                            console.log('[WebRTC Content] WebRTC service not yet initialized');
+                            sendResponse({ 
+                                success: true, 
+                                state: {
+                                    connected: false,
+                                    iceConnectionState: 'new',
+                                    connectionState: 'new',
+                                    signalingState: 'stable',
+                                    error: 'WebRTC service not initialized'
+                                }
+                            });
+                        } else {
+                            const state = webrtcService.getConnectionState();
+                            console.log('[WebRTC Content] Current connection state:', state);
+                            sendResponse({ 
+                                success: true, 
+                                state 
+                            });
+                        }
                     } catch (error) {
-                        console.error('[WebRTC Content] Error connecting to WebRTC:', error);
+                        console.error('[WebRTC Content] Error getting connection state:', error);
                         sendResponse({ 
                             success: false, 
-                            error: `Failed to connect: ${(error as Error).message}` 
+                            error: `Failed to get connection state: ${(error as Error).message}` 
                         });
                     }
                     break;
 
-        case 'WEBRTC_GET_STATE':
-            try {
-                if (!webrtcService) {
-                    // Si le service n'est pas encore initialisé, retourner un état par défaut
-                    console.log('[WebRTC Content] WebRTC service not yet initialized');
-                    sendResponse({ 
-                        success: true, 
-                        state: {
-                            connected: false,
-                            iceConnectionState: 'new',
-                            connectionState: 'new',
-                            signalingState: 'stable',
-                            error: 'WebRTC service not initialized'
+                case 'WEBRTC_SEND_CONTROL':
+                    console.log('[WebRTC Content] Sending control message:', message.data);
+                    try {
+                        const service = getOrCreateWebRTCService();
+                        if (!service) {
+                            throw new Error('Failed to initialize WebRTC service');
                         }
-                    });
-                } else {
-                    const state = webrtcService.getConnectionState();
-                    console.log('[WebRTC Content] Current connection state:', state);
+                        
+                        const controlSuccess = service.sendControlMessage(message.data);
+                        console.log(`[WebRTC Content] Control message ${controlSuccess ? 'sent successfully' : 'failed to send'}`);
+                        sendResponse({ 
+                            success: controlSuccess, 
+                            data: { success: controlSuccess } 
+                        });
+                    } catch (error) {
+                        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+                        console.error('[WebRTC Content] Error sending control message:', errorMessage);
+                        sendResponse({ 
+                            success: false, 
+                            error: `Control message failed: ${errorMessage}` 
+                        });
+                    }
+                    break;
+
+                default:
+                    const warningMsg = `Unknown message type: ${message.type}`;
+                    console.warn(`[WebRTC Content] ${warningMsg}`, message);
                     sendResponse({ 
-                        success: true, 
-                        state 
+                        success: false, 
+                        error: warningMsg 
                     });
-                }
-            } catch (error) {
-                console.error('[WebRTC Content] Error getting connection state:', error);
-                sendResponse({ 
-                    success: false, 
-                    error: `Failed to get connection state: ${(error as Error).message}` 
-                });
             }
-            break;
-
-        case 'WEBRTC_SEND_AUDIO':
-          // Cette méthode est obsolète, utiliser CAPTURE_TAB_AUDIO à la place
-          console.warn('[WebRTC Content] WEBRTC_SEND_AUDIO is deprecated, use CAPTURE_TAB_AUDIO instead');
-          sendResponse({
-            success: false,
-            error: 'WEBRTC_SEND_AUDIO is deprecated, use CAPTURE_TAB_AUDIO instead'
-          });
-          break;
-
-        case 'WEBRTC_SEND_CONTROL':
-          console.log('[WebRTC Content] Sending control message:', message.data);
-          try {
-            const service = getOrCreateWebRTCService();
-            if (!service) {
-              throw new Error('Failed to initialize WebRTC service');
-            }
-            
-            const controlSuccess = service.sendControlMessage(message.data);
-            console.log(`[WebRTC Content] Control message ${controlSuccess ? 'sent successfully' : 'failed to send'}`);
+        } catch (error) {
+            const errorMsg = `[WebRTC Content] Unexpected error in message handler: ${(error as Error).message}`;
+            console.error(errorMsg, error);
             sendResponse({ 
-              success: controlSuccess, 
-              data: { success: controlSuccess } 
+                success: false, 
+                error: errorMsg 
             });
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            console.error('[WebRTC Content] Error sending control message:', errorMessage);
-            sendResponse({ 
-              success: false, 
-              error: `Control message failed: ${errorMessage}` 
-            });
-          }
-          break;
-
-        case 'WEBRTC_DISCONNECT':
-          console.log('[WebRTC Content] Disconnecting from desktop...');
-          try {
-            if (!webrtcService) {
-              console.log('[WebRTC Content] No active WebRTC connection to disconnect');
-              sendResponse({ 
-                success: true, 
-                data: { status: 'disconnected' } 
-              });
-              return;
-            }
-            
-            webrtcService.disconnect();
-            console.log('[WebRTC Content] Successfully disconnected from WebRTC service');
-            sendResponse({ 
-              success: true, 
-              data: { status: 'disconnected' } 
-            });
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            console.error('[WebRTC Content] Error during disconnection:', errorMessage);
-            sendResponse({ 
-              success: false, 
-              error: `Disconnection failed: ${errorMessage}` 
-            });
-          }
-          break;
-
-        case 'WEBRTC_GET_STATE':
-          try {
-            if (!webrtcService) {
-              console.log('[WebRTC Content] WebRTC service not initialized, returning default state');
-              sendResponse({
-                success: true,
-                data: {
-                  connected: false,
-                  iceConnectionState: 'new',
-                  connectionState: 'new',
-                  signalingState: 'stable',
-                  error: 'WebRTC service not initialized'
-                }
-              });
-              return;
-            }
-            
-            const state = webrtcService.getConnectionState();
-            console.log('[WebRTC Content] Current connection state:', state);
-            sendResponse({ 
-              success: true, 
-              data: state 
-            });
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            console.error('[WebRTC Content] Error getting connection state:', errorMessage);
-            sendResponse({ 
-              success: false, 
-              error: `Failed to get connection state: ${errorMessage}` 
-            });
-          }
-          break;
-
-        default:
-          const warningMsg = `Unknown message type: ${message.type}`;
-          console.warn(`[WebRTC Content] ${warningMsg}`, message);
-          sendResponse({ 
-            success: false, 
-            error: warningMsg 
-          });
-      }
-    } catch (error) {
-      const errorMsg = `[WebRTC Content] Unexpected error in message handler: ${(error as Error).message}`;
-      console.error(errorMsg, error);
-      sendResponse({ 
-        success: false, 
-        error: errorMsg 
-      });
-    }
-  })();
-  
-  // Retourne true pour indiquer que la réponse sera asynchrone
-  return true;
+        }
+    })();
+    
+    // Retourne true pour indiquer que la réponse sera asynchrone
+    return true;
 });
 
 // Log de fin d'initialisation

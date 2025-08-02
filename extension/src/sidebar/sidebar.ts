@@ -463,22 +463,13 @@ class Sidebar {
                     throw new Error('Failed to activate the selected tab. Please try again.');
                 }
 
-                // Send message to content script to start audio capture
-                const response = await chrome.tabs.sendMessage(Number(this.selectedTabId), {
-                    type: 'CAPTURE_TAB_AUDIO'
-                });
-
-                if (!response || !response.success) {
-                    throw new Error(response?.error || 'Failed to start audio capture');
-                }
-
-                // Start streaming with the captured stream
+                // Start streaming directly via background script
                 const startResponse = await chrome.runtime.sendMessage({ 
                     type: 'START_STREAMING', 
                     tabId: Number(this.selectedTabId)
                 });
-                if (!response.success) {
-                    throw new Error(response.error);
+                if (!startResponse.success) {
+                    throw new Error(startResponse.error);
                 }
                 this.streaming = true;
                 this.elements.startStreamingButton.innerHTML = `

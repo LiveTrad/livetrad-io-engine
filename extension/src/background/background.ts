@@ -50,24 +50,21 @@ class AudioCaptureManager {
               this.activeTabId = message.tabId;
               
               try {
-                // 1. Connecter d'abord au bureau via WebRTC
-                const connectResponse = await this.sendMessageToWebRTC({
-                  type: 'WEBRTC_CONNECT'
+                // 1. Envoyer le message au content script pour capturer l'audio et démarrer WebRTC
+                const streamResponse = await this.sendMessageToContentScript({
+                  type: 'CAPTURE_TAB_AUDIO'
                 });
-                console.log('[Background] WebRTC connect response:', connectResponse);
                 
-                if (!connectResponse.success) {
-                  throw new Error(connectResponse.error || 'Failed to connect to desktop');
+                if (!streamResponse.success) {
+                  throw new Error(streamResponse.error || 'Failed to capture tab audio');
                 }
                 
-                // 2. Démarrer la capture audio via le content script
-                const captureResponse = await this.captureTabAudio(message.tabId);
-                console.log('[Background] Audio capture started successfully');
+                console.log('[Background] Audio capture and WebRTC streaming started successfully');
                 
                 // Mettre à jour l'état
                 this.state.isStreaming = true;
                 this.state.activeTabId = message.tabId;
-                this.state.stream = captureResponse;
+                this.state.stream = null; // Le stream est géré par le content script
                 
                 response = { success: true, data: { success: true } };
               } catch (error) {
@@ -84,14 +81,13 @@ class AudioCaptureManager {
               console.log(`[Background] Stopping streaming for tab ${message.tabId}`);
               
               try {
-                // 1. Arrêter la capture audio via le content script
-                await this.sendMessageToWebRTC({
-                  type: 'STOP_AUDIO_CAPTURE',
-                  tabId: message.tabId
+                // 1. Envoyer message d'arrêt au content script
+                await this.sendMessageToContentScript({
+                  type: 'STOP_AUDIO_CAPTURE'
                 });
                 
-                // 2. Déconnecter du bureau via WebRTC
-                await this.sendMessageToWebRTC({
+                // 2. Déconnecter WebRTC
+                await this.sendMessageToContentScript({
                   type: 'WEBRTC_DISCONNECT'
                 });
                 
@@ -122,9 +118,9 @@ class AudioCaptureManager {
             case 'CONNECT_DESKTOP':
               console.log(`[Background] Connecting to desktop with WebRTC: ${this.useWebRTC}`);
               if (this.useWebRTC) {
-                console.log('[Background] Using real WebRTC content script relay');
+                console.log('[Background] Using WebRTC connection via content script');
                 try {
-                  const connectResponse = await this.sendMessageToWebRTC({
+                  const connectResponse = await this.sendMessageToContentScript({
                     type: 'WEBRTC_CONNECT'
                   });
                   console.log('[Background] WebRTC connect response:', connectResponse);
@@ -141,7 +137,7 @@ class AudioCaptureManager {
             case 'DISCONNECT_DESKTOP':
               if (this.useWebRTC) {
                 console.log('[Background] Disconnecting WebRTC');
-                await this.sendMessageToWebRTC({
+                await this.sendMessageToContentScript({
                   type: 'WEBRTC_DISCONNECT'
                 });
                 response = { success: true, data: { status: 'disconnected' } };
@@ -150,16 +146,7 @@ class AudioCaptureManager {
                 response = { success: true, data: { status: 'disconnected' } };
               }
               break;
-            case 'CAPTURE_TAB_AUDIO':
-              console.log('[Background] Capturing tab audio...');
-              try {
-                const stream = await this.captureTabAudio(message.tabId);
-                response = { success: true, data: { stream } };
-              } catch (error) {
-                console.error('[Background] Error capturing tab audio:', error);
-                response = { success: false, error: (error as Error).message };
-              }
-              break;
+
             case 'TOGGLE_WEBRTC':
               this.useWebRTC = !this.useWebRTC;
               response = { success: true, data: { useWebRTC: this.useWebRTC } };
@@ -210,26 +197,10 @@ class AudioCaptureManager {
     });
   }
 
-  private async captureTabAudio(tabId: number): Promise<MediaStream> {
-    console.log(`[Background] Sending CAPTURE_TAB_AUDIO to tab ${tabId}`);
-    
-    // Envoyer le message au content script dans l'onglet cible
-    const response = await this.sendMessageToWebRTC({
-      type: 'CAPTURE_TAB_AUDIO',
-      tabId: tabId
-    });
-    
-    if (!response.success) {
-      throw new Error(response.error || 'Failed to capture tab audio');
-    }
-    
-    // Le flux audio est maintenant géré directement par le content script
-    // via WebRTC, donc nous n'avons pas besoin de le retourner ici
-    return new MediaStream();
-  }
+
 
   // Relay message to content script in active tab with safe injection
-  private async sendMessageToWebRTC(message: any): Promise<ResponseType> {
+  private async sendMessageToContentScript(message: any): Promise<ResponseType> {
     try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tabs.length === 0) {
@@ -311,13 +282,15 @@ class AudioCaptureManager {
         };
       }
     } catch (error) {
-      console.error('[Background] Error in sendMessageToWebRTC:', error);
+      console.error('[Background] Error in sendMessageToContentScript:', error);
       return { 
         success: false, 
         error: `Unexpected error: ${(error as Error).message || 'Unknown error'}`
       };
     }
   }
+
+
 }
 
 // Initialize the manager
