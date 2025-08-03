@@ -342,8 +342,28 @@ export class WebRTCService extends EventEmitter {
       // Add audio track to peer connection
       const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack) {
+        console.log('[WebRTC] Audio track details:', {
+          id: audioTrack.id,
+          kind: audioTrack.kind,
+          enabled: audioTrack.enabled,
+          muted: audioTrack.muted,
+          readyState: audioTrack.readyState,
+          settings: audioTrack.getSettings()
+        });
+        
         this.peerConnection.addTrack(audioTrack, stream);
-        console.log('[WebRTC] Audio track added to peer connection');
+        console.log('[WebRTC] Audio track added to peer connection successfully');
+        
+        // Log sender details
+        const senders = this.peerConnection.getSenders();
+        const audioSender = senders.find(sender => sender.track?.kind === 'audio');
+        if (audioSender) {
+          console.log('[WebRTC] Audio sender created:', {
+            trackId: audioSender.track?.id,
+            kind: audioSender.track?.kind
+          });
+        }
+        
         return true;
       }
       return false;

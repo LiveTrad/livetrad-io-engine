@@ -495,15 +495,35 @@ export class WebRTCService extends EventEmitter {
   private handleAudioTrack(track: MediaStreamTrack): void {
     console.log('[WebRTC] Audio track received, setting up processing...');
     
-    // For now, just log that we received audio data
-    // In a real implementation, we would process the audio data here
+    // Log detailed audio track information
     console.log('[WebRTC] Audio track details:', {
       kind: track.kind,
       id: track.id,
       enabled: track.enabled,
       muted: track.muted,
-      readyState: track.readyState
+      readyState: track.readyState,
+      settings: track.getSettings(),
+      constraints: track.getConstraints()
     });
+
+    // Log codec information from the peer connection
+    if (this.peerConnection) {
+      const receivers = this.peerConnection.getReceivers();
+      const audioReceiver = receivers.find(r => r.track && r.track.kind === 'audio');
+      if (audioReceiver) {
+        const parameters = audioReceiver.getParameters();
+        console.log('[WebRTC] Audio receiver parameters:', {
+          codecs: parameters.codecs.map(c => ({
+            mimeType: c.mimeType,
+            clockRate: c.clockRate,
+            channels: c.channels,
+            sdpFmtpLine: c.sdpFmtpLine
+          })),
+          // encodings: parameters.encodings,
+          headerExtensions: parameters.headerExtensions
+        });
+      }
+    }
 
     // Set up transcription if enabled
     if (this.transcriptionEnabled) {
@@ -516,6 +536,8 @@ export class WebRTCService extends EventEmitter {
       kind: track.kind,
       enabled: track.enabled
     });
+    
+    console.log('[WebRTC] Audio track processing setup complete');
   }
 
   private setupTranscription(track: MediaStreamTrack): void {
