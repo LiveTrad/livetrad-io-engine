@@ -477,7 +477,8 @@ class Sidebar {
                 int16Array[i] = Math.round(inputData[i] * 32767);
             }
             
-            const audioBuffer = Buffer.from(int16Array.buffer);
+            // Convert Int16Array to Uint8Array for transmission (browser-compatible)
+            const audioBuffer = new Uint8Array(int16Array.buffer);
             
             // Send audio data via data channel
             const success = this.webrtcService?.sendControlMessage({
@@ -486,7 +487,7 @@ class Sidebar {
             });
             
             // Log occasionally to avoid spam
-            if (Math.random() < 0.01) { // 1% of chunks
+            if (Math.random() < 0.1) { // 10% of chunks for debugging
                 console.log('[Sidebar] Audio data sent via data channel, success:', success, 'size:', audioBuffer.length);
             }
         };

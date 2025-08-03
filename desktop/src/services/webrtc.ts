@@ -506,7 +506,12 @@ export class WebRTCService extends EventEmitter {
   }
 
   private handleControlMessage(message: any): void {
-    console.log('[WebRTC] Control message received:', JSON.stringify(message, null, 2));
+    // Log message type without the full data to avoid spam
+    if (message.type === 'audio-data') {
+      console.log('[WebRTC] Control message received: audio-data (size:', message.data?.length || 0, 'bytes)');
+    } else {
+      console.log('[WebRTC] Control message received:', message.type);
+    }
     
     switch (message.type) {
       case 'volume':
@@ -638,6 +643,32 @@ export class WebRTCService extends EventEmitter {
       };
     }
 
+    // Safe getReceivers with error handling
+    let streamInfo: StreamInfo = {
+      hasAudio: false,
+      hasVideo: false,
+      codecs: []
+    };
+
+    try {
+      const receivers = this.peerConnection.getReceivers();
+      streamInfo = {
+        hasAudio: receivers.some(r => r.track && r.track.kind === 'audio'),
+        hasVideo: receivers.some(r => r.track && r.track.kind === 'video'),
+        codecs: receivers
+          .filter(r => r.track)
+          .map(r => ({
+            kind: r.track!.kind,
+            codec: r.getParameters().codecs[0]?.mimeType || 'unknown',
+            enabled: r.track!.enabled,
+            readyState: r.track!.readyState
+          }))
+      };
+    } catch (error) {
+      console.warn('[WebRTC] Error getting receivers:', error);
+      // Use default streamInfo if getReceivers fails
+    }
+
     return {
       status: this.peerConnection.connectionState === 'connected' ? 'connected' : 
              this.peerConnection.connectionState === 'connecting' ? 'connecting' : 'disconnected',
@@ -647,18 +678,7 @@ export class WebRTCService extends EventEmitter {
       clientId: 'desktop',
       desktopUrl: `ws://${config.webrtc.host}:${config.webrtc.signalingPort}`,
       timestamp: new Date().toISOString(),
-      streamInfo: {
-        hasAudio: this.peerConnection.getReceivers().some(r => r.track && r.track.kind === 'audio'),
-        hasVideo: this.peerConnection.getReceivers().some(r => r.track && r.track.kind === 'video'),
-        codecs: this.peerConnection.getReceivers()
-          .filter(r => r.track)
-          .map(r => ({
-            kind: r.track!.kind,
-            codec: r.getParameters().codecs[0]?.mimeType || 'unknown',
-            enabled: r.track!.enabled,
-            readyState: r.track!.readyState
-          }))
-      }
+      streamInfo
     };
   }
 
@@ -792,17 +812,23 @@ export class WebRTCService extends EventEmitter {
     try {
       const audioData = message.data;
       
-      // Convert array back to Buffer
-      const audioBuffer = Buffer.from(audioData);
+      // Convert Uint8Array back to Int16Array (PCM s16le format)
+      const uint8Array = new Uint8Array(audioData);
+      const int16Array = new Int16Array(uint8Array.buffer);
+      const audioBuffer = Buffer.from(int16Array.buffer);
       
-      // Add to playback buffer if playing
-      if (this.isPlaying && this.audioPlaybackProcess) {
-        this.addToAudioBuffer(audioBuffer);
-        
-        // Log occasionally to avoid spam
-        if (Math.random() < 0.01) { // 1% of chunks
-          console.log('[WebRTC] Received audio data chunk, size:', audioBuffer.length);
-        }
+      // Start playback if not already started
+      if (!this.isPlaying || !this.audioPlaybackProcess) {
+        console.log('[WebRTC] Starting playback for data channel audio...');
+        this.startPlayback();
+      }
+      
+      // Add to playback buffer
+      this.addToAudioBuffer(audioBuffer);
+      
+      // Log very occasionally to avoid spam
+      if (Math.random() < 0.001) { // 0.1% of chunks
+        console.log('[WebRTC] Audio chunk processed, size:', audioBuffer.length);
       }
       
       // Send to Deepgram if transcription is enabled
