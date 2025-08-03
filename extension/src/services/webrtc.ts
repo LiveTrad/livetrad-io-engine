@@ -392,6 +392,16 @@ export class WebRTCService extends EventEmitter {
     };
   }
 
+  public getSenders(): RTCRtpSender[] {
+    return this.peerConnection?.getSenders() || [];
+  }
+
+  public removeTrack(sender: RTCRtpSender): void {
+    if (this.peerConnection) {
+      this.peerConnection.removeTrack(sender);
+    }
+  }
+
   private syncConnectionState(force: boolean = false): void {
     if (!this.peerConnection) return;
     

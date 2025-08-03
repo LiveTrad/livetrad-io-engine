@@ -472,10 +472,15 @@ class Sidebar {
             }
 
             if (this.streaming) {
-                // Stop streaming
+                // Stop streaming (but keep WebRTC connection alive)
                 if (this.webrtcService) {
-                    this.webrtcService.disconnect();
-                    console.log('[Sidebar] WebRTC disconnected');
+                    // Remove audio track instead of disconnecting
+                    const senders = this.webrtcService.getSenders();
+                    const audioSender = senders.find((sender: RTCRtpSender) => sender.track?.kind === 'audio');
+                    if (audioSender) {
+                        this.webrtcService.removeTrack(audioSender);
+                        console.log('[Sidebar] Audio track removed from WebRTC');
+                    }
                 }
                 this.streaming = false;
                 this.elements.startStreamingButton.innerHTML = `

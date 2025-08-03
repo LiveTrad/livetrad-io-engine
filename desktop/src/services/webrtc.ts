@@ -57,6 +57,7 @@ export class WebRTCService extends EventEmitter {
   private audioContext: AudioContext | null = null;
   private audioDestination: MediaStreamAudioDestinationNode | null = null;
   private iceRestartAttempts: number = 0;
+  private processedAudioTracks: Set<string> = new Set();
 
   constructor() {
     super();
@@ -404,9 +405,40 @@ export class WebRTCService extends EventEmitter {
 
       // Handle incoming audio tracks
       this.peerConnection.ontrack = (event) => {
-        console.log('[WebRTC] Audio track received');
+        console.log('[WebRTC] Audio track received via ontrack event');
         this.handleAudioTrack(event.track);
       };
+      
+      // Also check for existing tracks when connection is established
+      this.peerConnection.onconnectionstatechange = () => {
+        if (this.peerConnection?.connectionState === 'connected') {
+          console.log('[WebRTC] Connection established, checking for existing tracks...');
+          const receivers = this.peerConnection.getReceivers();
+          receivers.forEach(receiver => {
+            if (receiver.track && receiver.track.kind === 'audio') {
+              console.log('[WebRTC] Found existing audio track:', receiver.track.id);
+              this.handleAudioTrack(receiver.track);
+            }
+          });
+        }
+      };
+      
+      // Track processed audio tracks to avoid duplicates
+      this.processedAudioTracks = new Set();
+      
+      // Monitor for new tracks being added
+      setInterval(() => {
+        if (this.peerConnection?.connectionState === 'connected') {
+          const receivers = this.peerConnection.getReceivers();
+          receivers.forEach(receiver => {
+            if (receiver.track && receiver.track.kind === 'audio' && !this.processedAudioTracks.has(receiver.track.id)) {
+              console.log('[WebRTC] New audio track detected:', receiver.track.id);
+              this.processedAudioTracks.add(receiver.track.id);
+              this.handleAudioTrack(receiver.track);
+            }
+          });
+        }
+      }, 1000); // Check every second
 
       // Handle data channel
       this.peerConnection.ondatachannel = (event) => {
@@ -525,6 +557,9 @@ export class WebRTCService extends EventEmitter {
       }
     }
 
+    // Set up audio processing
+    this.setupAudioProcessing(track);
+
     // Set up transcription if enabled
     if (this.transcriptionEnabled) {
       this.setupTranscription(track);
@@ -538,6 +573,87 @@ export class WebRTCService extends EventEmitter {
     });
     
     console.log('[WebRTC] Audio track processing setup complete');
+  }
+
+  private setupAudioProcessing(track: MediaStreamTrack): void {
+    console.log('[WebRTC] Setting up audio processing for track:', track.id);
+    
+    // Create audio context for processing
+    this.audioContext = new AudioContext();
+    
+    // Create media stream source from the track
+    const stream = new MediaStream([track]);
+    const source = this.audioContext.createMediaStreamSource(stream);
+    
+    // Create audio destination for processing
+    this.audioDestination = this.audioContext.createMediaStreamDestination();
+    
+    // Connect source to destination
+    source.connect(this.audioDestination);
+    
+    // Set up audio processing
+    const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+    
+    processor.onaudioprocess = (event) => {
+      const inputBuffer = event.inputBuffer;
+      const outputBuffer = event.outputBuffer;
+      
+      // Get audio data
+      const inputData = inputBuffer.getChannelData(0);
+      
+      // Calculate audio stats
+      let sum = 0;
+      let maxValue = Number.MIN_VALUE;
+      let minValue = Number.MAX_VALUE;
+      
+      for (let i = 0; i < inputData.length; i++) {
+        const value = inputData[i];
+        sum += Math.abs(value);
+        maxValue = Math.max(maxValue, value);
+        minValue = Math.min(minValue, value);
+      }
+      
+      const avgValue = inputData.length > 0 ? sum / inputData.length : 0;
+      
+      const audioStats = {
+        chunkSize: inputData.length,
+        maxValue: maxValue.toFixed(4),
+        minValue: minValue.toFixed(4),
+        avgValue: avgValue.toFixed(4),
+        timestamp: new Date().toISOString()
+      };
+      
+      // Emit audio stats for UI updates
+      this.emit('audio-stats', audioStats);
+      
+      // Log audio stats occasionally
+      if (Math.random() < 0.01) { // 1% of chunks
+        console.log('[WebRTC] Audio stats:', audioStats);
+      }
+      
+      // Send to Deepgram if transcription is enabled
+      if (this.transcriptionEnabled) {
+        // Convert float32 to int16 for Deepgram
+        const int16Array = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) {
+          int16Array[i] = Math.round(inputData[i] * 32767);
+        }
+        
+        const audioBuffer = Buffer.from(int16Array.buffer);
+        console.log('[WebRTC] Sending audio chunk to Deepgram, size:', audioBuffer.length);
+        this.deepgramService.sendAudioData(audioBuffer);
+      }
+      
+      // Copy input to output (pass-through)
+      const outputData = outputBuffer.getChannelData(0);
+      outputData.set(inputData);
+    };
+    
+    // Connect processor
+    source.connect(processor);
+    processor.connect(this.audioDestination);
+    
+    console.log('[WebRTC] Audio processing setup complete');
   }
 
   private setupTranscription(track: MediaStreamTrack): void {
@@ -750,5 +866,14 @@ export class WebRTCService extends EventEmitter {
       this.signalingServer.close();
       this.signalingServer = null;
     }
+  }
+
+  public getAudioStats(): any {
+    // This will be updated by the audio processing
+    return null;
+  }
+
+  public onAudioStats(callback: (stats: any) => void): void {
+    this.on('audio-stats', callback);
   }
 } 
