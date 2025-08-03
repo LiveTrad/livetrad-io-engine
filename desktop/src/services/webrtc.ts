@@ -63,7 +63,7 @@ export class WebRTCService extends EventEmitter {
   private isPlaying: boolean = false;
   private _isPlaybackActive: boolean = false;
   private audioBuffer: Buffer[] = [];
-  private bufferMaxSize: number = 50; // Increased buffer size
+  private bufferMaxSize: number = 5; // Reduced for lower latency
   private bufferFlushInterval: NodeJS.Timeout | null = null;
 
   constructor() {
@@ -897,32 +897,26 @@ export class WebRTCService extends EventEmitter {
         return;
       }
 
-      // Audio filters for quality enhancement
+      // Minimal audio filters for better quality
       const audioFilters = [
-        'highpass=f=80',
-        'lowpass=f=7500',
-        'dynaudnorm=f=150:g=15:p=0.9:m=10:r=0.5:n=1',
-        'acompressor=threshold=0.089:ratio=9:attack=200:release=1000',
-        'equalizer=f=1000:width_type=h:width=200:g=2',
-        'equalizer=f=3000:width_type=h:width=500:g=1.5',
-        'volume=1.2'
+        'volume=1.0' // Just normalize volume, no other processing
       ].join(',');
       
       this.audioPlaybackProcess = ffmpegManager.spawnFFplay([
         '-f', 's16le',
         '-ar', '48000', // WebRTC typically uses 48kHz
-        '-ch_layout', 'mono', // Use mono for better performance
+        '-ch_layout', 'stereo', // Keep stereo for better quality
         '-i', 'pipe:0',
         '-af', audioFilters,
         '-nodisp',
         '-autoexit',
         '-probesize', '32',
         '-analyzeduration', '0',
-        '-fflags', 'nobuffer+discardcorrupt',
+        '-fflags', 'nobuffer+discardcorrupt+genpts',
         '-flags', 'low_delay',
         '-strict', 'experimental',
         '-loglevel', 'error',
-        '-sync', 'ext' // External sync for better timing
+        '-sync', 'audio' // Audio sync for better timing
       ]);
       
       this._isPlaybackActive = true;
@@ -961,6 +955,9 @@ export class WebRTCService extends EventEmitter {
   }
 
   public async stopPlayback(): Promise<void> {
+    // Flush remaining audio before stopping
+    this.flushAudioBuffer();
+    
     if (this.audioPlaybackProcess) {
       this.audioPlaybackProcess.kill();
       this.audioPlaybackProcess = null;
@@ -990,7 +987,7 @@ export class WebRTCService extends EventEmitter {
   private startAudioBuffering(): void {
     this.bufferFlushInterval = setInterval(() => {
       this.flushAudioBuffer();
-    }, 50); // Flush every 50ms for smoother playback
+    }, 20); // Flush every 20ms for lower latency
   }
 
   private stopAudioBuffering(): void {
