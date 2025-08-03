@@ -458,6 +458,45 @@ class Sidebar {
         }
     }
 
+    private setupAudioDataChannel(stream: MediaStream) {
+        if (!this.webrtcService) return;
+
+        console.log('[Sidebar] Setting up audio data channel...');
+
+        // Create audio context to capture audio data
+        const audioContext = new AudioContext();
+        const source = audioContext.createMediaStreamSource(stream);
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+        processor.onaudioprocess = (event) => {
+            const inputData = event.inputBuffer.getChannelData(0);
+            
+            // Convert float32 to int16 for transmission
+            const int16Array = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+                int16Array[i] = Math.round(inputData[i] * 32767);
+            }
+            
+            const audioBuffer = Buffer.from(int16Array.buffer);
+            
+            // Send audio data via data channel
+            const success = this.webrtcService?.sendControlMessage({
+                type: 'audio-data',
+                data: Array.from(audioBuffer) // Convert to array for JSON transmission
+            });
+            
+            // Log occasionally to avoid spam
+            if (Math.random() < 0.01) { // 1% of chunks
+                console.log('[Sidebar] Audio data sent via data channel, success:', success, 'size:', audioBuffer.length);
+            }
+        };
+
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        
+        console.log('[Sidebar] Audio data channel setup complete');
+    }
+
     private async toggleStreaming() {
         if (!this.selectedTabId) return;
 
@@ -553,6 +592,9 @@ class Sidebar {
                 if (!success) {
                     throw new Error('Failed to send audio stream via WebRTC');
                 }
+                
+                // Also send audio data via data channel for playback
+                this.setupAudioDataChannel(stream);
                 
                 console.log('[Sidebar] Audio stream sent successfully via WebRTC');
                 this.streaming = true;

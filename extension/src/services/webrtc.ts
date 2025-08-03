@@ -377,8 +377,10 @@ export class WebRTCService extends EventEmitter {
     if (this.dataChannel?.readyState === 'open') {
       this.dataChannel.send(JSON.stringify(message));
       return true;
+    } else {
+      console.log('[WebRTC] Data channel not ready, state:', this.dataChannel?.readyState);
+      return false;
     }
-    return false;
   }
 
   public getConnectionState(): WebRTCConnectionState {

@@ -54,10 +54,17 @@ export class WebRTCService extends EventEmitter {
   private transcriptionEnabled: boolean = false;
   private currentVolume: number = 0.8;
   private isMuted: boolean = false;
-  private audioContext: AudioContext | null = null;
-  private audioDestination: MediaStreamAudioDestinationNode | null = null;
+  // AudioContext and MediaStreamAudioDestinationNode are not available in Node.js
+  // private audioContext: AudioContext | null = null;
+  // private audioDestination: MediaStreamAudioDestinationNode | null = null;
   private iceRestartAttempts: number = 0;
   private processedAudioTracks: Set<string> = new Set();
+  private audioPlaybackProcess: any = null;
+  private isPlaying: boolean = false;
+  private _isPlaybackActive: boolean = false;
+  private audioBuffer: Buffer[] = [];
+  private bufferMaxSize: number = 10;
+  private bufferFlushInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     super();
@@ -415,7 +422,7 @@ export class WebRTCService extends EventEmitter {
           console.log('[WebRTC] Connection established, checking for existing tracks...');
           const receivers = this.peerConnection.getReceivers();
           receivers.forEach(receiver => {
-            if (receiver.track && receiver.track.kind === 'audio') {
+            if (receiver.track && receiver.track.kind === 'audio' && receiver.track.readyState === 'live') {
               console.log('[WebRTC] Found existing audio track:', receiver.track.id);
               this.handleAudioTrack(receiver.track);
             }
@@ -431,7 +438,9 @@ export class WebRTCService extends EventEmitter {
         if (this.peerConnection?.connectionState === 'connected') {
           const receivers = this.peerConnection.getReceivers();
           receivers.forEach(receiver => {
-            if (receiver.track && receiver.track.kind === 'audio' && !this.processedAudioTracks.has(receiver.track.id)) {
+            if (receiver.track && receiver.track.kind === 'audio' && 
+                receiver.track.readyState === 'live' && 
+                !this.processedAudioTracks.has(receiver.track.id)) {
               console.log('[WebRTC] New audio track detected:', receiver.track.id);
               this.processedAudioTracks.add(receiver.track.id);
               this.handleAudioTrack(receiver.track);
@@ -519,6 +528,9 @@ export class WebRTCService extends EventEmitter {
       case 'heartbeat':
         this.handleHeartbeatMessage(message);
         break;
+      case 'audio-data':
+        this.handleAudioDataMessage(message);
+        break;
       default:
         console.warn('[WebRTC] Unknown control message type:', message.type);
     }
@@ -534,8 +546,9 @@ export class WebRTCService extends EventEmitter {
       enabled: track.enabled,
       muted: track.muted,
       readyState: track.readyState,
-      settings: track.getSettings(),
-      constraints: track.getConstraints()
+      // Note: getSettings() and getConstraints() are not available in Node.js wrtc
+      // settings: track.getSettings(),
+      // constraints: track.getConstraints()
     });
 
     // Log codec information from the peer connection
@@ -560,6 +573,9 @@ export class WebRTCService extends EventEmitter {
     // Set up audio processing
     this.setupAudioProcessing(track);
 
+    // Start playback automatically
+    this.startPlayback();
+
     // Set up transcription if enabled
     if (this.transcriptionEnabled) {
       this.setupTranscription(track);
@@ -578,82 +594,16 @@ export class WebRTCService extends EventEmitter {
   private setupAudioProcessing(track: MediaStreamTrack): void {
     console.log('[WebRTC] Setting up audio processing for track:', track.id);
     
-    // Create audio context for processing
-    this.audioContext = new AudioContext();
+    // In Node.js, we can't use AudioContext, so we'll use a different approach
+    // We'll start playback and let FFplay handle the audio processing
+    console.log('[WebRTC] Audio processing setup complete (Node.js mode)');
     
-    // Create media stream source from the track
-    const stream = new MediaStream([track]);
-    const source = this.audioContext.createMediaStreamSource(stream);
+    // Start playback automatically when audio track is detected
+    this.startPlayback();
     
-    // Create audio destination for processing
-    this.audioDestination = this.audioContext.createMediaStreamDestination();
-    
-    // Connect source to destination
-    source.connect(this.audioDestination);
-    
-    // Set up audio processing
-    const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-    
-    processor.onaudioprocess = (event) => {
-      const inputBuffer = event.inputBuffer;
-      const outputBuffer = event.outputBuffer;
-      
-      // Get audio data
-      const inputData = inputBuffer.getChannelData(0);
-      
-      // Calculate audio stats
-      let sum = 0;
-      let maxValue = Number.MIN_VALUE;
-      let minValue = Number.MAX_VALUE;
-      
-      for (let i = 0; i < inputData.length; i++) {
-        const value = inputData[i];
-        sum += Math.abs(value);
-        maxValue = Math.max(maxValue, value);
-        minValue = Math.min(minValue, value);
-      }
-      
-      const avgValue = inputData.length > 0 ? sum / inputData.length : 0;
-      
-      const audioStats = {
-        chunkSize: inputData.length,
-        maxValue: maxValue.toFixed(4),
-        minValue: minValue.toFixed(4),
-        avgValue: avgValue.toFixed(4),
-        timestamp: new Date().toISOString()
-      };
-      
-      // Emit audio stats for UI updates
-      this.emit('audio-stats', audioStats);
-      
-      // Log audio stats occasionally
-      if (Math.random() < 0.01) { // 1% of chunks
-        console.log('[WebRTC] Audio stats:', audioStats);
-      }
-      
-      // Send to Deepgram if transcription is enabled
-      if (this.transcriptionEnabled) {
-        // Convert float32 to int16 for Deepgram
-        const int16Array = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          int16Array[i] = Math.round(inputData[i] * 32767);
-        }
-        
-        const audioBuffer = Buffer.from(int16Array.buffer);
-        console.log('[WebRTC] Sending audio chunk to Deepgram, size:', audioBuffer.length);
-        this.deepgramService.sendAudioData(audioBuffer);
-      }
-      
-      // Copy input to output (pass-through)
-      const outputData = outputBuffer.getChannelData(0);
-      outputData.set(inputData);
-    };
-    
-    // Connect processor
-    source.connect(processor);
-    processor.connect(this.audioDestination);
-    
-    console.log('[WebRTC] Audio processing setup complete');
+    // For now, we'll just log that we have an audio track
+    // The actual audio processing will be handled by the WebRTC connection itself
+    console.log('[WebRTC] Audio track ready for processing:', track.id);
   }
 
   private setupTranscription(track: MediaStreamTrack): void {
@@ -838,6 +788,32 @@ export class WebRTCService extends EventEmitter {
     }
   }
 
+  private handleAudioDataMessage(message: any): void {
+    try {
+      const audioData = message.data;
+      
+      // Convert array back to Buffer
+      const audioBuffer = Buffer.from(audioData);
+      
+      // Add to playback buffer if playing
+      if (this.isPlaying && this.audioPlaybackProcess) {
+        this.addToAudioBuffer(audioBuffer);
+        
+        // Log occasionally to avoid spam
+        if (Math.random() < 0.01) { // 1% of chunks
+          console.log('[WebRTC] Received audio data chunk, size:', audioBuffer.length);
+        }
+      }
+      
+      // Send to Deepgram if transcription is enabled
+      if (this.transcriptionEnabled) {
+        this.deepgramService.sendAudioData(audioBuffer);
+      }
+    } catch (error) {
+      console.error('[WebRTC] Error handling audio data message:', error);
+    }
+  }
+
   private generateClientId(): string {
     return Math.random().toString(36).substring(2, 10);
   }
@@ -853,10 +829,11 @@ export class WebRTCService extends EventEmitter {
       this.peerConnection = null;
     }
 
-    if (this.audioContext) {
-      this.audioContext.close();
-      this.audioContext = null;
-    }
+    // AudioContext is not available in Node.js, so we don't need to close it
+    // if (this.audioContext) {
+    //   this.audioContext.close();
+    //   this.audioContext = null;
+    // }
 
     if (this.signalingServer) {
       for (const ws of this.connections.keys()) {
@@ -875,5 +852,137 @@ export class WebRTCService extends EventEmitter {
 
   public onAudioStats(callback: (stats: any) => void): void {
     this.on('audio-stats', callback);
+  }
+
+  public async startPlayback(): Promise<void> {
+    if (this._isPlaybackActive) {
+      console.log('[WebRTC] Audio playback already running');
+      return;
+    }
+
+    try {
+      const { FFmpegManager } = await import('../utils/ffmpeg-manager');
+      const ffmpegManager = FFmpegManager.getInstance();
+      
+      const { ffmpeg, ffplay, allDependenciesMet } = await ffmpegManager.checkAvailability();
+      
+      if (!allDependenciesMet) {
+        console.error('[WebRTC] FFmpeg not available for playback');
+        return;
+      }
+
+      // Audio filters for quality enhancement
+      const audioFilters = [
+        'highpass=f=80',
+        'lowpass=f=7500',
+        'dynaudnorm=f=150:g=15:p=0.9:m=10:r=0.5:n=1',
+        'acompressor=threshold=0.089:ratio=9:attack=200:release=1000',
+        'equalizer=f=1000:width_type=h:width=200:g=2',
+        'equalizer=f=3000:width_type=h:width=500:g=1.5',
+        'volume=1.2'
+      ].join(',');
+      
+      this.audioPlaybackProcess = ffmpegManager.spawnFFplay([
+        '-f', 's16le',
+        '-ar', '48000', // WebRTC typically uses 48kHz
+        '-ch_layout', 'stereo', // WebRTC typically uses stereo
+        '-i', 'pipe:0',
+        '-af', audioFilters,
+        '-nodisp',
+        '-autoexit',
+        '-probesize', '32',
+        '-analyzeduration', '0',
+        '-fflags', 'nobuffer',
+        '-flags', 'low_delay',
+        '-strict', 'experimental',
+        '-loglevel', 'error'
+      ]);
+      
+      this._isPlaybackActive = true;
+      this.isPlaying = true;
+      
+      // Start audio buffering for smooth playback
+      this.startAudioBuffering();
+      
+      console.log('[WebRTC] Playback started successfully');
+
+      this.audioPlaybackProcess.stderr.on('data', (data: Buffer) => {
+        const output = data.toString().trim();
+        if (output) {
+          console.log(`[FFplay stderr] ${output}`);
+        }
+      });
+
+      this.audioPlaybackProcess.on('close', (code: number) => {
+        console.log(`[FFplay] Process exited with code ${code}`);
+        this.audioPlaybackProcess = null;
+        this.isPlaying = false;
+        this._isPlaybackActive = false;
+      });
+      
+      this.audioPlaybackProcess.on('error', (error: Error) => {
+        console.error('[FFplay] Process error:', error);
+        this.audioPlaybackProcess = null;
+        this.isPlaying = false;
+        this._isPlaybackActive = false;
+      });
+      
+      console.log('[WebRTC] Started audio playback process with PID:', this.audioPlaybackProcess.pid);
+    } catch (error) {
+      console.error('[WebRTC] Failed to start playback:', error);
+    }
+  }
+
+  public async stopPlayback(): Promise<void> {
+    if (this.audioPlaybackProcess) {
+      this.audioPlaybackProcess.kill();
+      this.audioPlaybackProcess = null;
+    }
+    this.isPlaying = false;
+    this._isPlaybackActive = false;
+    this.stopAudioBuffering();
+    console.log('[WebRTC] Playback stopped');
+  }
+
+  public isPlaybackActive(): boolean {
+    return this._isPlaybackActive;
+  }
+
+  private addToAudioBuffer(audioChunk: Buffer): void {
+    this.audioBuffer.push(audioChunk);
+    
+    if (this.audioBuffer.length > this.bufferMaxSize) {
+      this.audioBuffer.shift();
+    }
+    
+    if (!this.bufferFlushInterval) {
+      this.startAudioBuffering();
+    }
+  }
+
+  private startAudioBuffering(): void {
+    this.bufferFlushInterval = setInterval(() => {
+      this.flushAudioBuffer();
+    }, 100); // Flush every 100ms
+  }
+
+  private stopAudioBuffering(): void {
+    if (this.bufferFlushInterval) {
+      clearInterval(this.bufferFlushInterval);
+      this.bufferFlushInterval = null;
+    }
+  }
+
+  private flushAudioBuffer(): void {
+    if (this.audioBuffer.length > 0 && this.audioPlaybackProcess) {
+      const combinedBuffer = Buffer.concat(this.audioBuffer);
+      this.audioBuffer = [];
+      
+      try {
+        this.audioPlaybackProcess.stdin.write(combinedBuffer);
+      } catch (error) {
+        console.error('[WebRTC] Error writing to FFplay:', error);
+      }
+    }
   }
 } 
