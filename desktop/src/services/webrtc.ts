@@ -63,7 +63,7 @@ export class WebRTCService extends EventEmitter {
   private isPlaying: boolean = false;
   private _isPlaybackActive: boolean = false;
   private audioBuffer: Buffer[] = [];
-  private bufferMaxSize: number = 10;
+  private bufferMaxSize: number = 50; // Increased buffer size
   private bufferFlushInterval: NodeJS.Timeout | null = null;
 
   constructor() {
@@ -508,7 +508,7 @@ export class WebRTCService extends EventEmitter {
   private handleControlMessage(message: any): void {
     // Log message type without the full data to avoid spam
     if (message.type === 'audio-data') {
-      console.log('[WebRTC] Control message received: audio-data (size:', message.data?.length || 0, 'bytes)');
+      // Don't log every audio data message to avoid spam
     } else {
       console.log('[WebRTC] Control message received:', message.type);
     }
@@ -827,7 +827,7 @@ export class WebRTCService extends EventEmitter {
       this.addToAudioBuffer(audioBuffer);
       
       // Log very occasionally to avoid spam
-      if (Math.random() < 0.001) { // 0.1% of chunks
+      if (Math.random() < 0.0001) { // 0.01% of chunks
         console.log('[WebRTC] Audio chunk processed, size:', audioBuffer.length);
       }
       
@@ -911,17 +911,18 @@ export class WebRTCService extends EventEmitter {
       this.audioPlaybackProcess = ffmpegManager.spawnFFplay([
         '-f', 's16le',
         '-ar', '48000', // WebRTC typically uses 48kHz
-        '-ch_layout', 'stereo', // WebRTC typically uses stereo
+        '-ch_layout', 'mono', // Use mono for better performance
         '-i', 'pipe:0',
         '-af', audioFilters,
         '-nodisp',
         '-autoexit',
         '-probesize', '32',
         '-analyzeduration', '0',
-        '-fflags', 'nobuffer',
+        '-fflags', 'nobuffer+discardcorrupt',
         '-flags', 'low_delay',
         '-strict', 'experimental',
-        '-loglevel', 'error'
+        '-loglevel', 'error',
+        '-sync', 'ext' // External sync for better timing
       ]);
       
       this._isPlaybackActive = true;
@@ -989,7 +990,7 @@ export class WebRTCService extends EventEmitter {
   private startAudioBuffering(): void {
     this.bufferFlushInterval = setInterval(() => {
       this.flushAudioBuffer();
-    }, 100); // Flush every 100ms
+    }, 50); // Flush every 50ms for smoother playback
   }
 
   private stopAudioBuffering(): void {
