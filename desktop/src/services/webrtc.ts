@@ -63,7 +63,7 @@ export class WebRTCService extends EventEmitter {
   private isPlaying: boolean = false;
   private _isPlaybackActive: boolean = false;
   private audioBuffer: Buffer[] = [];
-  private bufferMaxSize: number = 50; // Large buffer for smooth playback
+  private bufferMaxSize: number = 10; // Large buffer for smooth playback
   private bufferFlushInterval: NodeJS.Timeout | null = null;
 
   constructor() {
@@ -905,14 +905,15 @@ export class WebRTCService extends EventEmitter {
       
       this.audioPlaybackProcess = ffmpegManager.spawnFFplay([
         '-f', 's16le',
-        '-ch_layout', 'stereo', // Keep stereo for better quality
+        '-ar', '48000',
+        // '-ch_layout', 'stereo', // Keep stereo for better quality
         '-i', 'pipe:0',
         '-af', audioFilters,
         '-nodisp',
         '-autoexit',
         '-probesize', '32',
-        '-analyzeduration', '0',
-        '-fflags', 'nobuffer',
+        // '-analyzeduration', '0',
+        // '-fflags', 'nobuffer',
         '-loglevel', 'error'
       ]);
       
