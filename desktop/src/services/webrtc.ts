@@ -63,7 +63,7 @@ export class WebRTCService extends EventEmitter {
   private isPlaying: boolean = false;
   private _isPlaybackActive: boolean = false;
   private audioBuffer: Buffer[] = [];
-  private bufferMaxSize: number = 5; // Reduced for lower latency
+  private bufferMaxSize: number = 50; // Large buffer for smooth playback
   private bufferFlushInterval: NodeJS.Timeout | null = null;
 
   constructor() {
@@ -826,8 +826,8 @@ export class WebRTCService extends EventEmitter {
       // Add to playback buffer
       this.addToAudioBuffer(audioBuffer);
       
-      // Log very occasionally to avoid spam
-      if (Math.random() < 0.0001) { // 0.01% of chunks
+      // Log occasionally to see if data is being processed
+      if (Math.random() < 0.001) { // 0.1% of chunks
         console.log('[WebRTC] Audio chunk processed, size:', audioBuffer.length);
       }
       
@@ -881,7 +881,7 @@ export class WebRTCService extends EventEmitter {
   }
 
   public async startPlayback(): Promise<void> {
-    if (this._isPlaybackActive) {
+    if (this._isPlaybackActive && this.audioPlaybackProcess && !this.audioPlaybackProcess.killed) {
       console.log('[WebRTC] Audio playback already running');
       return;
     }
@@ -897,14 +897,14 @@ export class WebRTCService extends EventEmitter {
         return;
       }
 
-      // Minimal audio filters for better quality
+      // Audio filters for better quality
       const audioFilters = [
-        'volume=1.0' // Just normalize volume, no other processing
+        'aresample=async=1000', // Resample with async for better sync
+        'volume=1.0' // Normal volume, no distortion
       ].join(',');
       
       this.audioPlaybackProcess = ffmpegManager.spawnFFplay([
         '-f', 's16le',
-        '-ar', '48000', // WebRTC typically uses 48kHz
         '-ch_layout', 'stereo', // Keep stereo for better quality
         '-i', 'pipe:0',
         '-af', audioFilters,
@@ -912,11 +912,8 @@ export class WebRTCService extends EventEmitter {
         '-autoexit',
         '-probesize', '32',
         '-analyzeduration', '0',
-        '-fflags', 'nobuffer+discardcorrupt+genpts',
-        '-flags', 'low_delay',
-        '-strict', 'experimental',
-        '-loglevel', 'error',
-        '-sync', 'audio' // Audio sync for better timing
+        '-fflags', 'nobuffer',
+        '-loglevel', 'error'
       ]);
       
       this._isPlaybackActive = true;
@@ -987,7 +984,7 @@ export class WebRTCService extends EventEmitter {
   private startAudioBuffering(): void {
     this.bufferFlushInterval = setInterval(() => {
       this.flushAudioBuffer();
-    }, 20); // Flush every 20ms for lower latency
+    }, 100); // Flush every 100ms for smoother playback
   }
 
   private stopAudioBuffering(): void {
@@ -1003,9 +1000,18 @@ export class WebRTCService extends EventEmitter {
       this.audioBuffer = [];
       
       try {
+        // Check if process is still running
+        if (this.audioPlaybackProcess.killed) {
+          console.warn('[WebRTC] FFplay process was killed, restarting...');
+          this.startPlayback();
+          return;
+        }
+        
         this.audioPlaybackProcess.stdin.write(combinedBuffer);
       } catch (error) {
         console.error('[WebRTC] Error writing to FFplay:', error);
+        // Restart playback if there's an error
+        this.startPlayback();
       }
     }
   }

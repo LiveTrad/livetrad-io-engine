@@ -465,16 +465,20 @@ class Sidebar {
 
         // Create audio context to capture audio data
         const audioContext = new AudioContext();
+        console.log('[Sidebar] Audio context sample rate:', audioContext.sampleRate);
+        
         const source = audioContext.createMediaStreamSource(stream);
         const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
         processor.onaudioprocess = (event) => {
             const inputData = event.inputBuffer.getChannelData(0);
             
-            // Convert float32 to int16 for transmission
+            // Convert float32 to int16 with better precision
             const int16Array = new Int16Array(inputData.length);
             for (let i = 0; i < inputData.length; i++) {
-                int16Array[i] = Math.round(inputData[i] * 32767);
+                // Use Math.max/min to prevent clipping
+                const sample = Math.max(-1, Math.min(1, inputData[i]));
+                int16Array[i] = Math.round(sample * 32767);
             }
             
             // Convert Int16Array to Uint8Array for transmission (browser-compatible)

@@ -50,26 +50,24 @@ class AudioCaptureManager {
               this.activeTabId = message.tabId;
               
               try {
-                // 1. Capturer l'audio depuis le background script
-                const stream = await this.captureTabAudio(message.tabId);
-                console.log('[Background] Audio capture started successfully');
-                
-                // 2. Envoyer le stream au content script pour traitement WebRTC
-                const streamResponse = await this.sendMessageToContentScript({
-                  type: 'WEBRTC_SEND_AUDIO_STREAM',
-                  stream: stream
+                // 1. Connecter d'abord au bureau via WebRTC
+                const connectResponse = await this.sendMessageToWebRTC({
+                  type: 'WEBRTC_CONNECT'
                 });
+                console.log('[Background] WebRTC connect response:', connectResponse);
                 
-                if (!streamResponse.success) {
-                  throw new Error(streamResponse.error || 'Failed to send audio stream to WebRTC');
+                if (!connectResponse.success) {
+                  throw new Error(connectResponse.error || 'Failed to connect to desktop');
                 }
                 
-                console.log('[Background] Audio stream sent successfully to content script');
+                // 2. Démarrer la capture audio via le content script
+                const captureResponse = await this.captureTabAudio(message.tabId);
+                console.log('[Background] Audio capture started successfully');
                 
                 // Mettre à jour l'état
                 this.state.isStreaming = true;
                 this.state.activeTabId = message.tabId;
-                this.state.stream = stream;
+                this.state.stream = captureResponse;
                 
                 response = { success: true, data: { success: true } };
               } catch (error) {
@@ -82,49 +80,18 @@ class AudioCaptureManager {
               
               this.notifyStreamingStateChanged();
               break;
-              
-            case 'WEBRTC_SEND_AUDIO_STREAM':
-              console.log(`[Background] Sending audio stream to WebRTC for tab ${message.tabId}`);
-              
-              try {
-                // Envoyer le stream au content script pour traitement WebRTC
-                const streamResponse = await this.sendMessageToContentScript({
-                  type: 'WEBRTC_SEND_AUDIO_STREAM'
-                });
-                
-                if (!streamResponse.success) {
-                  throw new Error(streamResponse.error || 'Failed to send audio stream to WebRTC');
-                }
-                
-                console.log('[Background] Audio stream sent successfully to WebRTC');
-                
-                // Mettre à jour l'état
-                this.state.isStreaming = true;
-                this.state.activeTabId = message.tabId;
-                this.state.stream = message.stream;
-                
-                response = { success: true, data: { success: true } };
-              } catch (error) {
-                console.error('[Background] Error sending audio stream:', error);
-                response = { 
-                  success: false, 
-                  error: `Failed to send audio stream: ${(error as Error).message}` 
-                };
-              }
-              
-              this.notifyStreamingStateChanged();
-              break;
             case 'STOP_STREAMING':
               console.log(`[Background] Stopping streaming for tab ${message.tabId}`);
               
               try {
-                // 1. Envoyer message d'arrêt au content script
-                await this.sendMessageToContentScript({
-                  type: 'STOP_AUDIO_CAPTURE'
+                // 1. Arrêter la capture audio via le content script
+                await this.sendMessageToWebRTC({
+                  type: 'STOP_AUDIO_CAPTURE',
+                  tabId: message.tabId
                 });
                 
-                // 2. Déconnecter WebRTC
-                await this.sendMessageToContentScript({
+                // 2. Déconnecter du bureau via WebRTC
+                await this.sendMessageToWebRTC({
                   type: 'WEBRTC_DISCONNECT'
                 });
                 
@@ -155,9 +122,9 @@ class AudioCaptureManager {
             case 'CONNECT_DESKTOP':
               console.log(`[Background] Connecting to desktop with WebRTC: ${this.useWebRTC}`);
               if (this.useWebRTC) {
-                console.log('[Background] Using WebRTC connection via content script');
+                console.log('[Background] Using real WebRTC content script relay');
                 try {
-                  const connectResponse = await this.sendMessageToContentScript({
+                  const connectResponse = await this.sendMessageToWebRTC({
                     type: 'WEBRTC_CONNECT'
                   });
                   console.log('[Background] WebRTC connect response:', connectResponse);
@@ -174,7 +141,7 @@ class AudioCaptureManager {
             case 'DISCONNECT_DESKTOP':
               if (this.useWebRTC) {
                 console.log('[Background] Disconnecting WebRTC');
-                await this.sendMessageToContentScript({
+                await this.sendMessageToWebRTC({
                   type: 'WEBRTC_DISCONNECT'
                 });
                 response = { success: true, data: { status: 'disconnected' } };
@@ -183,7 +150,16 @@ class AudioCaptureManager {
                 response = { success: true, data: { status: 'disconnected' } };
               }
               break;
-
+            case 'CAPTURE_TAB_AUDIO':
+              console.log('[Background] Capturing tab audio...');
+              try {
+                const stream = await this.captureTabAudio(message.tabId);
+                response = { success: true, data: { stream } };
+              } catch (error) {
+                console.error('[Background] Error capturing tab audio:', error);
+                response = { success: false, error: (error as Error).message };
+              }
+              break;
             case 'TOGGLE_WEBRTC':
               this.useWebRTC = !this.useWebRTC;
               response = { success: true, data: { useWebRTC: this.useWebRTC } };
@@ -235,105 +211,25 @@ class AudioCaptureManager {
   }
 
   private async captureTabAudio(tabId: number): Promise<MediaStream> {
-    console.log(`[Background] Capturing tab audio for tab ${tabId}`);
+    console.log(`[Background] Sending CAPTURE_TAB_AUDIO to tab ${tabId}`);
     
-    try {
-      // Vérifier si l'API tabCapture est disponible
-      if (typeof chrome.tabCapture === 'undefined') {
-        throw new Error('chrome.tabCapture is not available in this context. Make sure the tabCapture permission is set in manifest.json');
-      }
-      
-      // Obtenir les informations de l'onglet
-      const tab = await chrome.tabs.get(tabId);
-      if (!tab || !tab.url) {
-        throw new Error('Could not get tab information');
-      }
-      
-      // Vérifier si c'est une URL restreinte
-      const restrictedUrls = ['chrome://', 'chrome-extension://', 'edge://', 'about:'];
-      if (restrictedUrls.some(prefix => tab.url?.startsWith(prefix))) {
-        throw new Error('This page cannot be captured due to browser security restrictions.');
-      }
-      
-      console.log(`[Background] Capturing audio from tab ${tabId} (${tab.url})`);
-      
-      // Créer les options de capture
-      const captureOptions = {
-        audio: true,
-        video: false,
-        audioConstraints: {
-          mandatory: {
-            chromeMediaSource: 'tab',
-            chromeMediaSourceId: tabId.toString()
-          }
-        }
-      };
-      
-      // Démarrer la capture
-      const stream = await new Promise<MediaStream>((resolve, reject) => {
-        const captureStartTime = Date.now();
-        console.log('[Background] Starting tab capture...', { tabId, captureStartTime });
-        
-        chrome.tabCapture.capture(captureOptions, (stream) => {
-          const captureEndTime = Date.now();
-          const captureDuration = captureEndTime - captureStartTime;
-          
-          if (chrome.runtime.lastError) {
-            const errorMsg = chrome.runtime.lastError.message || 'Unknown error';
-            console.error('[Background] Tab capture error:', {
-              tabId,
-              error: errorMsg,
-              captureDuration,
-              chromeRuntimeError: chrome.runtime.lastError
-            });
-            reject(new Error(`Tab capture failed after ${captureDuration}ms: ${errorMsg}`));
-            return;
-          } 
-          
-          if (!stream) {
-            const error = new Error('No audio stream received from tab capture');
-            console.error('[Background] No stream received from tab capture', {
-              tabId,
-              error: error.message,
-              captureDuration
-            });
-            reject(error);
-            return;
-          }
-          
-          // Vérifier les pistes audio
-          const audioTracks = stream.getAudioTracks();
-          const trackInfo = audioTracks.map(track => ({
-            id: track.id,
-            kind: track.kind,
-            label: track.label,
-            enabled: track.enabled,
-            muted: track.muted,
-            readyState: track.readyState
-          }));
-          
-          console.log('[Background] Tab capture started successfully', {
-            tabId,
-            captureDuration,
-            audioTracks: trackInfo,
-            streamId: stream.id,
-            active: stream.active
-          });
-          
-          resolve(stream);
-        });
-      });
-      
-      return stream;
-    } catch (error) {
-      console.error('[Background] Error in captureTabAudio:', error);
-      throw error;
+    // Envoyer le message au content script dans l'onglet cible
+    const response = await this.sendMessageToWebRTC({
+      type: 'CAPTURE_TAB_AUDIO',
+      tabId: tabId
+    });
+    
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to capture tab audio');
     }
+    
+    // Le flux audio est maintenant géré directement par le content script
+    // via WebRTC, donc nous n'avons pas besoin de le retourner ici
+    return new MediaStream();
   }
 
-
   // Relay message to content script in active tab with safe injection
-  private async sendMessageToContentScript(message: any): Promise<ResponseType> {
+  private async sendMessageToWebRTC(message: any): Promise<ResponseType> {
     try {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tabs.length === 0) {
@@ -415,15 +311,13 @@ class AudioCaptureManager {
         };
       }
     } catch (error) {
-      console.error('[Background] Error in sendMessageToContentScript:', error);
+      console.error('[Background] Error in sendMessageToWebRTC:', error);
       return { 
         success: false, 
         error: `Unexpected error: ${(error as Error).message || 'Unknown error'}`
       };
     }
   }
-
-
 }
 
 // Initialize the manager
