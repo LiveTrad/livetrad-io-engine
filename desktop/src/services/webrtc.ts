@@ -906,7 +906,7 @@ export class WebRTCService extends EventEmitter {
       this.audioPlaybackProcess = ffmpegManager.spawnFFplay([
         '-f', 's16le',
         '-ar', '48000',
-        // '-ch_layout', 'stereo', // Keep stereo for better quality
+        // '-ch_layout', 'stereo', // Keep stereo for better quality (but after tested, this is causing voice change problems)
         '-i', 'pipe:0',
         '-af', audioFilters,
         '-nodisp',
