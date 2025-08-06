@@ -29,6 +29,13 @@ export interface ConnectionState {
 export type MessageType = {
   type: 'START_STREAMING';
   tabId: number;
+} | {
+  type: 'START_STREAMING_WITH_STREAM';
+  tabId: number;
+  stream: MediaStream;
+} | {
+  type: 'WEBRTC_SEND_AUDIO_STREAM';
+  tabId: number;
   stream: MediaStream;
 } | {
   type: 'STOP_STREAMING';
@@ -41,6 +48,11 @@ export type MessageType = {
   type: 'CONNECT_DESKTOP';
 } | {
   type: 'DISCONNECT_DESKTOP';
+} | {
+  type: 'TOGGLE_WEBRTC';
+} | {
+  type: 'CAPTURE_TAB_AUDIO';
+  tabId: number;
 };
 
 export type ResponseType = {
@@ -49,6 +61,7 @@ export type ResponseType = {
   state?: AudioCaptureState;
   tabs?: TabInfo[];
   connection?: ConnectionState;
+  data?: any;
 } | {
   success: false;
   error: string;

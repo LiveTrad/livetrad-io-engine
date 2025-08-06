@@ -1,20 +1,21 @@
-import { WebSocketService } from '../services/websocket';
 import { AudioService } from '../services/audio';
-import { AudioCaptureService } from '../services/audioCaptureService';
-import { defaultWebSocketConfig } from '../config/websocket.config';
 import { ConnectionState, AudioSource } from '../types';
 import { defaultConfig, audioSourceDomains } from '../config/audio.config';
+import { WebRTCService } from '../services/webrtc';
+import { defaultWebRTCConfig } from '../config/webrtc.config';
+import { defaultAudioConfig } from '../config/audio.config';
 
 type FilterType = 'all' | 'with-audio' | 'without-audio';
 
 class Sidebar {
-    private wsService: WebSocketService;
     private audioService: AudioService;
+    private webrtcService: WebRTCService | null = null;
     private streaming: boolean = false;
     private currentFilter: FilterType = 'all';
     private currentSources: AudioSource[] = [];
     private showAllTabs: boolean = defaultConfig.showAllTabs;
     private selectedTabId: string | null = null;
+    private connectionState: ConnectionState = { status: 'disconnected', desktopUrl: 'ws://localhost:8081' };
 
     private elements = {
         connectButton: document.getElementById('connectButton') as HTMLButtonElement,
@@ -33,8 +34,6 @@ class Sidebar {
         showAllTabsCheckbox: document.getElementById('showAllTabs') as HTMLInputElement
     };
 
-    private audioCaptureService: AudioCaptureService;
-
     constructor() {
         // Vérifier que tous les éléments sont trouvés
         for (const [key, element] of Object.entries(this.elements)) {
@@ -43,9 +42,28 @@ class Sidebar {
             }
         }
 
-        this.wsService = new WebSocketService(defaultWebSocketConfig);
         this.audioService = new AudioService();
-        this.audioCaptureService = new AudioCaptureService();
+        this.webrtcService = new WebRTCService(defaultWebRTCConfig, defaultAudioConfig);
+        
+        // Écouter les changements d'état de WebRTC
+        this.webrtcService.on('connectionstatechange', (state) => {
+            console.log('[Sidebar] WebRTC connection state changed:', state);
+            this.connectionState = state;
+            this.updateConnectionStatus(state);
+        });
+        
+        // Écouter les événements de reconnexion
+        this.webrtcService.on('reconnecting', (attempt: number, maxAttempts: number) => {
+            console.log(`[Sidebar] WebRTC reconnecting attempt ${attempt}/${maxAttempts}`);
+            this.elements.statusMessage.textContent = `Connecting to desktop... (attempt ${attempt}/${maxAttempts})`;
+        });
+        
+        this.webrtcService.on('reconnect-failed', () => {
+            console.log('[Sidebar] WebRTC reconnect failed');
+            this.elements.statusMessage.textContent = 'Connection failed after multiple attempts';
+            this.showError('Failed to connect to desktop after multiple attempts. Please check if the desktop app is running.', false);
+        });
+        
         this.initializeEventListeners();
         this.initializeIntersectionObserver();
 
@@ -57,7 +75,7 @@ class Sidebar {
     }
 
     private initializeEventListeners() {
-        // WebSocket connection events
+        // WebRTC connection events
         this.elements.connectButton.addEventListener('click', this.handleConnectionClick.bind(this));
 
         // Audio source selection events
@@ -78,7 +96,7 @@ class Sidebar {
         });
 
         // Initial states
-        this.updateConnectionStatus(this.wsService.getConnectionState());
+        this.updateConnectionStatus(this.connectionState);
     }
 
     private initializeIntersectionObserver() {
@@ -128,45 +146,177 @@ class Sidebar {
         }
     }
 
+    private showError(message: string, isFatal: boolean = false) {
+        // Créer ou mettre à jour le message d'erreur
+        let errorElement = document.getElementById('errorMessage');
+        if (!errorElement) {
+            errorElement = document.createElement('div');
+            errorElement.id = 'errorMessage';
+            errorElement.className = 'error-message';
+            this.elements.streamingSection.insertAdjacentElement('beforebegin', errorElement);
+        }
+        
+        errorElement.innerHTML = `
+            <div class="error-content">
+                <span class="material-icons-round error-icon">error_outline</span>
+                <span class="error-text">${message}</span>
+                ${isFatal ? '' : '<button class="dismiss-error">×</button>'}
+            </div>
+        `;
+        
+        // Ajouter un gestionnaire d'événements pour le bouton de fermeture
+        const dismissButton = errorElement.querySelector('.dismiss-error');
+        if (dismissButton) {
+            dismissButton.addEventListener('click', () => {
+                errorElement?.remove();
+            });
+        }
+        
+        // Supprimer automatiquement après 10 secondes pour les erreurs non fatales
+        if (!isFatal) {
+            setTimeout(() => {
+                errorElement?.remove();
+            }, 10000);
+        }
+    }
+    
+    private clearError() {
+        const errorElement = document.getElementById('errorMessage');
+        if (errorElement) {
+            errorElement.remove();
+        }
+    }
+
+    private updateConnectionStatus(state: ConnectionState) {
+        this.connectionState = state;
+        
+        // Mettre à jour l'interface utilisateur en fonction de l'état de la connexion
+        const { statusDot, statusText, connectButton, connectButtonText } = this.elements;
+        
+        if (!statusDot || !statusText || !connectButton || !connectButtonText) {
+            console.error('One or more required elements are missing');
+            return;
+        }
+        
+        switch (state.status) {
+            case 'connected':
+                statusDot.style.backgroundColor = '#22c55e';
+                statusText.textContent = 'Connected';
+                connectButtonText.textContent = 'Disconnect';
+                connectButton.classList.remove('connecting');
+                break;
+                
+            case 'connecting':
+                statusDot.style.backgroundColor = '#f59e0b';
+                statusText.textContent = 'Connecting...';
+                connectButtonText.textContent = 'Connecting...';
+                break;
+                
+            case 'disconnected':
+            default:
+                statusDot.style.backgroundColor = '#ef4444';
+                statusText.textContent = 'Disconnected';
+                connectButtonText.textContent = 'Connect';
+                connectButton.classList.remove('connecting');
+                break;
+        }
+        
+        // Mettre à jour l'état du bouton de streaming
+        this.updateStreamingButtonState();
+    }
+
     private async handleConnectionClick() {
         const button = this.elements.connectButton;
-        const currentState = this.wsService.getConnectionState();
+        this.clearError(); // Effacer les erreurs précédentes
 
-        if (currentState.status === 'connected') {
+        if (!button || !this.elements.connectButtonText) {
+            console.error('Required elements for connection handling are missing');
+            return;
+        }
+
+        if (this.connectionState.status === 'connected') {
             // Déconnexion
             button.classList.add('disconnecting');
             this.elements.connectButtonText.textContent = 'Disconnecting...';
-            this.wsService.disconnect();
-            this.updateConnectionStatus(this.wsService.getConnectionState());
-            button.classList.remove('disconnecting');
+            
+            try {
+                if (this.webrtcService) {
+                    this.webrtcService.disconnect();
+                }
+                // L'état sera mis à jour via l'événement connectionstatechange
+            } catch (error) {
+                console.error('Disconnection error:', error);
+                this.showError('An error occurred while disconnecting. Please try again.', false);
+            } finally {
+                button.classList.remove('disconnecting');
+            }
         } else {
             // Connexion
             button.classList.add('connecting');
             this.elements.connectButtonText.textContent = 'Connecting...';
             
             try {
-                const newState = await this.wsService.connect();
-                this.updateConnectionStatus(newState);
+                // Si le service n'existe pas ou s'il a échoué, en créer un nouveau
+                if (!this.webrtcService || this.connectionState.status === 'disconnected') {
+                    if (this.webrtcService) {
+                        // Nettoyer l'ancien service
+                        this.webrtcService.removeAllListeners();
+                        this.webrtcService.disconnect();
+                    }
+                    
+                    this.webrtcService = new WebRTCService(defaultWebRTCConfig, defaultAudioConfig);
+                    
+                    // Écouter les changements d'état de WebRTC
+                    this.webrtcService.on('connectionstatechange', (state) => {
+                        console.log('[Sidebar] WebRTC connection state changed:', state);
+                        this.connectionState = state;
+                        this.updateConnectionStatus(state);
+                    });
+                    
+                    // Écouter les événements de reconnexion
+                    this.webrtcService.on('reconnecting', (attempt: number, maxAttempts: number) => {
+                        console.log(`[Sidebar] WebRTC reconnecting attempt ${attempt}/${maxAttempts}`);
+                        this.elements.statusMessage.textContent = `Connecting to desktop... (attempt ${attempt}/${maxAttempts})`;
+                    });
+                    
+                    this.webrtcService.on('reconnect-failed', () => {
+                        console.log('[Sidebar] WebRTC reconnect failed');
+                        this.elements.statusMessage.textContent = 'Connection failed after multiple attempts';
+                        this.showError('Failed to connect to desktop after multiple attempts. Please check if the desktop app is running.', false);
+                    });
+                }
+                
+                // Démarrer la connexion (ne pas attendre immédiatement)
+                this.webrtcService.connect().catch((error) => {
+                    console.error('Connection error:', error);
+                    
+                    // Ne pas afficher d'erreur immédiatement si c'est juste un timeout de connexion
+                    // L'utilisateur verra les tentatives de reconnexion via les événements
+                    if (error && error.message && !error.message.includes('timeout')) {
+                        this.showError(`Connection failed: ${(error as Error).message}`, false);
+                    }
+                    
+                    // Remettre le bouton en état normal en cas d'erreur
+                    if (this.elements.connectButtonText) {
+                        this.elements.connectButtonText.textContent = 'Connect';
+                    }
+                    button.classList.remove('connecting');
+                });
+                
+                // Ne pas afficher d'erreur immédiatement, laisser WebRTC se connecter
+                // L'état sera mis à jour via l'événement connectionstatechange
+                
             } catch (error) {
                 console.error('Connection error:', error);
-                this.updateConnectionStatus({
-                    status: 'disconnected',
-                    desktopUrl: this.wsService.getConnectionState().desktopUrl
-                });
+                this.showError(`Connection failed: ${(error as Error).message}`, false);
+                
+                // Remettre le bouton en état normal en cas d'erreur
+                if (this.elements.connectButtonText) {
+                    this.elements.connectButtonText.textContent = 'Connect';
+                }
+                button.classList.remove('connecting');
             }
-            
-            button.classList.remove('connecting');
         }
-    }
-
-    private updateConnectionStatus(state: ConnectionState) {
-        const isConnected = state.status === 'connected';
-        
-        this.elements.statusDot.className = `status-dot ${state.status}`;
-        this.elements.statusText.textContent = state.status;
-        this.elements.connectButtonText.textContent = isConnected ? 'Disconnect' : 'Connect';
-        
-        this.updateStreamingButtonState();
     }
 
     private updateSourcesList() {
@@ -264,21 +414,20 @@ class Sidebar {
 
     private async updateStreamingButtonState() {
         const selectedSource = this.audioService.getSelectedSource();
-        console.log("Selected Source is : ", selectedSource);
-        const canStream = this.wsService.getConnectionState().status === 'connected' 
-            && selectedSource !== null;
+        console.log("Selected Source is: ", selectedSource);
+        const canStream = this.connectionState.status === 'connected' && selectedSource !== null;
 
         // Enable streaming for any selected source when connected
         this.elements.startStreamingButton.disabled = !canStream;
-        
+
         if (!canStream) {
             this.elements.startStreamingButton.innerHTML = `
                 <span class="button-icon">🎙️</span>
                 Start Streaming
             `;
-            this.elements.statusMessage.textContent = selectedSource ? 
-                'Connect to start streaming' : 
-                'Select a source and connect to start streaming';
+            this.elements.statusMessage.textContent = selectedSource
+                ? 'Connect to start streaming'
+                : 'Select a source and connect to start streaming';
             this.elements.streamingStatus.classList.remove('streaming-active');
         } else if (this.streaming && this.selectedTabId) {
             // Get the current streaming tab's title
@@ -288,10 +437,70 @@ class Sidebar {
                     <span class="button-icon">⏹️</span>
                     Stop Streaming (${streamingTab.title || 'Unknown'})
                 `;
+                this.elements.statusMessage.textContent = 'Streaming active';
+                this.elements.streamingStatus.classList.add('streaming-active');
             } catch (error) {
                 console.error('Error getting streaming tab info:', error);
+                this.elements.statusMessage.textContent = 'Error retrieving streaming tab information';
+                this.elements.startStreamingButton.innerHTML = `
+                    <span class="button-icon">⏹️</span>
+                    Stop Streaming
+                `;
+                this.elements.streamingStatus.classList.add('streaming-active');
             }
-    }}
+        } else {
+            this.elements.startStreamingButton.innerHTML = `
+                <span class="button-icon">🎙️</span>
+                Start Streaming
+            `;
+            this.elements.statusMessage.textContent = 'Ready to stream';
+            this.elements.streamingStatus.classList.remove('streaming-active');
+        }
+    }
+
+    private setupAudioDataChannel(stream: MediaStream) {
+        if (!this.webrtcService) return;
+
+        console.log('[Sidebar] Setting up audio data channel...');
+
+        // Create audio context to capture audio data
+        const audioContext = new AudioContext();
+        console.log('[Sidebar] Audio context sample rate:', audioContext.sampleRate);
+        
+        const source = audioContext.createMediaStreamSource(stream);
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+        processor.onaudioprocess = (event) => {
+            const inputData = event.inputBuffer.getChannelData(0);
+            
+            // Convert float32 to int16 with better precision
+            const int16Array = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+                // Use Math.max/min to prevent clipping
+                const sample = Math.max(-1, Math.min(1, inputData[i]));
+                int16Array[i] = Math.round(sample * 32767);
+            }
+            
+            // Convert Int16Array to Uint8Array for transmission (browser-compatible)
+            const audioBuffer = new Uint8Array(int16Array.buffer);
+            
+            // Send audio data via data channel
+            const success = this.webrtcService?.sendControlMessage({
+                type: 'audio-data',
+                data: Array.from(audioBuffer) // Convert to array for JSON transmission
+            });
+            
+            // Log occasionally to avoid spam
+            if (Math.random() < 0.1) { // 10% of chunks for debugging
+                console.log('[Sidebar] Audio data sent via data channel, success:', success, 'size:', audioBuffer.length);
+            }
+        };
+
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+        
+        console.log('[Sidebar] Audio data channel setup complete');
+    }
 
     private async toggleStreaming() {
         if (!this.selectedTabId) return;
@@ -307,10 +516,15 @@ class Sidebar {
             }
 
             if (this.streaming) {
-                // Stop streaming
-                const response = await this.audioCaptureService.stopStreaming(Number(this.selectedTabId));
-                if (!response.success) {
-                    throw new Error(response.error);
+                // Stop streaming (but keep WebRTC connection alive)
+                if (this.webrtcService) {
+                    // Remove audio track instead of disconnecting
+                    const senders = this.webrtcService.getSenders();
+                    const audioSender = senders.find((sender: RTCRtpSender) => sender.track?.kind === 'audio');
+                    if (audioSender) {
+                        this.webrtcService.removeTrack(audioSender);
+                        console.log('[Sidebar] Audio track removed from WebRTC');
+                    }
                 }
                 this.streaming = false;
                 this.elements.startStreamingButton.innerHTML = `
@@ -373,11 +587,21 @@ class Sidebar {
                     );
                 });
 
-                // Start streaming
-                const response = await this.audioCaptureService.startStreaming(stream, Number(this.selectedTabId));
-                if (!response.success) {
-                    throw new Error(response.error);
+                // Check if WebRTC is connected
+                if (!this.webrtcService || this.connectionState.status !== 'connected') {
+                    throw new Error('WebRTC connection not established. Please connect first.');
                 }
+
+                // Send audio stream via WebRTC
+                const success = await this.webrtcService.sendAudioStream(stream);
+                if (!success) {
+                    throw new Error('Failed to send audio stream via WebRTC');
+                }
+                
+                // Also send audio data via data channel for playback
+                this.setupAudioDataChannel(stream);
+                
+                console.log('[Sidebar] Audio stream sent successfully via WebRTC');
                 this.streaming = true;
                 this.elements.startStreamingButton.innerHTML = `
                     <span class="button-icon">⏹️</span>
@@ -399,8 +623,6 @@ class Sidebar {
             }
         }
     }
-
-
 }
 
 // Initialize the sidebar

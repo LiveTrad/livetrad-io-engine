@@ -1,17 +1,71 @@
 import { app, ipcMain } from 'electron';
 import { MainWindow } from './window/main-window';
 import { WebSocketService } from './services/websocket';
+import { WebRTCService } from './services/webrtc';
 import path from 'path';
 
 class LiveTradApp {
     private mainWindow: MainWindow;
     private wsService: WebSocketService;
+    private webrtcService: WebRTCService;
+    private useWebRTC: boolean = true; // WebRTC activé par défaut // Toggle for WebRTC vs WebSocket
 
     constructor() {
         this.mainWindow = new MainWindow();
         this.wsService = new WebSocketService();
+        this.webrtcService = new WebRTCService();
+        this.setupWebRTCEventListeners();
         this.initApp();
         this.setupIPC();
+    }
+
+    private setupWebRTCEventListeners(): void {
+        this.webrtcService.on('connection-state-change', (state) => {
+            console.log('[Main] WebRTC connection state changed:', state);
+            const mainWindow = this.mainWindow.getWindow();
+            if (mainWindow) {
+                mainWindow.webContents.send('connection-change', {
+                    status: state.status,
+                    details: {
+                        clientId: state.clientId,
+                        desktopUrl: state.desktopUrl,
+                        streamInfo: state.streamInfo,
+                        timestamp: state.timestamp || new Date().toISOString(),
+                        iceState: state.iceConnectionState,
+                        connectionState: state.connectionState,
+                        signalingState: state.signalingState
+                    }
+                });
+            }
+        });
+
+        this.webrtcService.on('transcription', (transcriptionData) => {
+            const mainWindow = this.mainWindow.getWindow();
+            if (mainWindow) {
+                mainWindow.webContents.send('transcription', transcriptionData);
+            }
+        });
+
+        this.webrtcService.on('deepgram-connected', () => {
+            const mainWindow = this.mainWindow.getWindow();
+            if (mainWindow) {
+                mainWindow.webContents.send('deepgram-connected');
+            }
+        });
+
+        this.webrtcService.on('deepgram-disconnected', () => {
+            const mainWindow = this.mainWindow.getWindow();
+            if (mainWindow) {
+                mainWindow.webContents.send('deepgram-disconnected');
+            }
+        });
+
+        this.webrtcService.on('deepgram-error', (error) => {
+            const mainWindow = this.mainWindow.getWindow();
+            if (mainWindow) {
+                mainWindow.webContents.send('deepgram-error', error);
+            }
+        });
     }
 
     private setupIPC(): void {
@@ -67,6 +121,11 @@ class LiveTradApp {
             this.mainWindow.getWindow()!.webContents.send('audio-stats', stats);
         });
 
+        // Listen for WebRTC connection changes
+        this.webrtcService.on('connection-change', (data) => {
+            this.mainWindow.getWindow()!.webContents.send('webrtc-connection-change', data);
+        });
+
         // Deepgram event handlers
         this.wsService.onTranscription((transcriptionData) => {
             this.mainWindow.getWindow()!.webContents.send('transcription', transcriptionData);
@@ -88,7 +147,8 @@ class LiveTradApp {
     private initApp(): void {
         app.on('ready', () => {
             this.mainWindow.create();
-            this.wsService.init();
+            // WebRTC only - no WebSocket
+            this.webrtcService.init();
         });
 
         app.on('window-all-closed', () => {

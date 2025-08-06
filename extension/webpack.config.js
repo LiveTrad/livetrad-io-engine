@@ -5,7 +5,9 @@ module.exports = {
   mode: 'production',
   entry: {
     sidebar: ['./src/sidebar/sidebar.ts', './src/sidebar/styles.css', './src/sidebar/sidebar.css'],
-    background: './src/background/background.ts'
+    background: './src/background/background.ts',
+    'webrtc-content': './src/content/webrtc-content.ts',
+    'webrtc-injector': './src/webrtc-injector/webrtc-injector.ts'
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -45,7 +47,12 @@ module.exports = {
         {
           from: 'src/sidebar/sidebar.html',
           to: 'sidebar.html'
-        }
+        },
+        {
+          from: 'dist/webrtc-injector.js',
+          to: 'webrtc-injector.js'
+        },
+
       ],
     }),
   ],
