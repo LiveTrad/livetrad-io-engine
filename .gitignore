@@ -4,3 +4,5 @@ build
 package-lock.json
 heartz
 server
+**/venv
+**/venv_backup
