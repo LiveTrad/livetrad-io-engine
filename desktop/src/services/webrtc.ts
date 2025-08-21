@@ -1031,16 +1031,19 @@ export class WebRTCService extends EventEmitter {
   }
 
   private startAudioBuffering(): void {
-    this.stopAudioBuffering(); // S'assurer qu'il n'y a pas d'intervalle en cours
+    this.stopAudioBuffering();
     
-    // Démarrer un nouvel intervalle plus fréquent
+    // Premier flush immédiat pour réduire la latence initiale
+    this.flushAudioBuffer();
+    
+    // Poursuivre avec l'intervalle normal
     this.bufferFlushInterval = setInterval(() => {
       if (!this.isFlushing) {
         this.flushAudioBuffer();
       }
     }, this.FLUSH_INTERVAL_MS);
     
-    console.log('[WebRTC] Audio buffering started with', this.FLUSH_INTERVAL_MS, 'ms interval');
+    console.log('[WebRTC] Audio buffering started with immediate flush');
   }
 
   private stopAudioBuffering(): void {
@@ -1050,55 +1053,30 @@ export class WebRTCService extends EventEmitter {
     }
   }
 
-  private async flushAudioBuffer(): Promise<void> {
+  private flushAudioBuffer(): void {
     if (this.isFlushing || this.audioBuffer.length === 0 || !this.audioPlaybackProcess) {
       return;
     }
 
     this.isFlushing = true;
-    const now = Date.now();
     
     try {
-      // Calculer la taille du chevauchement (10% du dernier buffer ou 5ms, selon le plus grand)
-      const overlapMs = Math.max(5, this.FLUSH_INTERVAL_MS * 0.1);
-      const overlapBytes = Math.floor((48000 * 2 * overlapMs) / 1000); // 48kHz, 16-bit
+      // Écrire immédiatement sans attendre
+      const bufferToSend = Buffer.concat(this.audioBuffer);
+      this.audioBuffer = [];
       
-      let bufferToSend: Buffer;
-      
-      if (this.audioBuffer.length > 1) {
-        // Si on a plusieurs buffers, on garde la fin du précédent pour l'overlap
-        const lastBuffer = this.audioBuffer[this.audioBuffer.length - 1];
-        const overlapStart = Math.max(0, lastBuffer.length - overlapBytes);
-        const overlapData = lastBuffer.slice(overlapStart);
-        
-        // Concaténer tous les buffers sauf le dernier, puis ajouter l'overlap
-        const mainBuffers = this.audioBuffer.slice(0, -1);
-        bufferToSend = Buffer.concat([...mainBuffers, overlapData]);
-        
-        // Garder le dernier buffer pour le prochain flush
-        this.audioBuffer = [lastBuffer];
-      } else {
-        // Un seul buffer, pas d'overlap possible
-        bufferToSend = Buffer.concat(this.audioBuffer);
-        this.audioBuffer = [];
-      }
-      
-      // Écrire les données si le processus est toujours actif
-      if (this.audioPlaybackProcess && !this.audioPlaybackProcess.killed) {
-        await new Promise<void>((resolve, reject) => {
-          this.audioPlaybackProcess.stdin.write(bufferToSend, (error: Error | null | undefined) => {
+      if (!this.audioPlaybackProcess.killed) {
+        // Écrire de manière asynchrone sans attendre la confirmation
+        try {
+          this.audioPlaybackProcess.stdin.write(bufferToSend, (error: Error | null) => {
             if (error) {
               console.error('[WebRTC] Error writing to FFplay:', error);
-              reject(error);
-            } else {
-              resolve();
+              this.handlePlaybackError(error);
             }
           });
-        });
-        
-        const flushDuration = Date.now() - now;
-        if (flushDuration > 10) { // Log uniquement si le flush prend du temps
-          console.log(`[WebRTC] Flushed ${bufferToSend.length} bytes in ${flushDuration}ms`);
+        } catch (error) {
+          console.error('[WebRTC] Error in write callback:', error);
+          this.handlePlaybackError(error as Error);
         }
       }
     } catch (error) {
@@ -1106,7 +1084,6 @@ export class WebRTCService extends EventEmitter {
       this.handlePlaybackError(error as Error);
     } finally {
       this.isFlushing = false;
-      this.lastFlushTime = Date.now();
     }
   }
 } 
