@@ -1,5 +1,4 @@
 import { AudioCaptureState, MessageType, ResponseType, TabInfo } from '../types';
-import { WebSocketService } from '../services/websocket';
 import { AudioCaptureService } from '../services/audioCaptureService';
 
 class AudioCaptureManager {
@@ -10,7 +9,7 @@ class AudioCaptureManager {
   };
 
   private audioCaptureService: AudioCaptureService;
-  private useWebRTC: boolean = true; // WebRTC activé par défaut
+  private useWebRTC: boolean = true;
   private activeTabId: number | null = null;
 
   constructor() {
