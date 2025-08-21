@@ -63,8 +63,13 @@ export class WebRTCService extends EventEmitter {
   private isPlaying: boolean = false;
   private _isPlaybackActive: boolean = false;
   private audioBuffer: Buffer[] = [];
-  private bufferMaxSize: number = 10; // Large buffer for smooth playback
+  private bufferMaxSize: number = 10; // Nombre de chunks à conserver
   private bufferFlushInterval: NodeJS.Timeout | null = null;
+  private isFlushing: boolean = false;
+  private readonly TARGET_LATENCY_MS = 50; // 50ms de latence cible
+  private lastFlushTime: number = 0;
+  private readonly FLUSH_INTERVAL_MS = 20; // Flush toutes les 20ms
+  private retryCount: number = 0; // Compteur de tentatives de reconnexion
 
   constructor() {
     super();
@@ -952,17 +957,57 @@ export class WebRTCService extends EventEmitter {
     }
   }
 
-  public async stopPlayback(): Promise<void> {
-    // Flush remaining audio before stopping
-    this.flushAudioBuffer();
+  private handlePlaybackError(error: Error): void {
+    console.error('[WebRTC] Playback error:', error);
     
+    // Réinitialiser l'état
+    this.audioBuffer = [];
+    this.stopAudioBuffering();
+    
+    // Redémarrer la lecture après un court délai
+    if (this._isPlaybackActive) {
+      const retryDelay = Math.min(1000, 100 * Math.pow(2, this.retryCount || 0));
+      this.retryCount = Math.min((this.retryCount || 0) + 1, 5);
+      
+      console.log(`[WebRTC] Attempting to restart playback in ${retryDelay}ms...`);
+      
+      setTimeout(() => {
+        if (this._isPlaybackActive) {
+          this.startPlayback().catch(err => {
+            console.error('[WebRTC] Failed to restart playback:', err);
+          });
+        }
+      }, retryDelay);
+    }
+  }
+
+  public async stopPlayback(): Promise<void> {
+    // Flusher les données restantes
+    if (this.audioBuffer.length > 0) {
+      try {
+        await this.flushAudioBuffer();
+      } catch (error) {
+        console.error('[WebRTC] Error during final flush:', error);
+      }
+    }
+    
+    // Arrêter le buffering
+    this.stopAudioBuffering();
+    
+    // Arrêter le processus de lecture
     if (this.audioPlaybackProcess) {
-      this.audioPlaybackProcess.kill();
+      if (!this.audioPlaybackProcess.killed) {
+        this.audioPlaybackProcess.kill('SIGTERM');
+      }
       this.audioPlaybackProcess = null;
     }
-    this.isPlaying = false;
+    
+    // Réinitialiser l'état
     this._isPlaybackActive = false;
-    this.stopAudioBuffering();
+    this.isPlaying = false;
+    this.audioBuffer = [];
+    this.retryCount = 0;
+    
     console.log('[WebRTC] Playback stopped');
   }
 
@@ -971,21 +1016,31 @@ export class WebRTCService extends EventEmitter {
   }
 
   private addToAudioBuffer(audioChunk: Buffer): void {
+    // Garder une trace du dernier chunk pour l'overlap
     this.audioBuffer.push(audioChunk);
     
-    if (this.audioBuffer.length > this.bufferMaxSize) {
+    // Limiter la taille du buffer
+    while (this.audioBuffer.length > this.bufferMaxSize) {
       this.audioBuffer.shift();
     }
     
+    // Démarrer le buffering si pas déjà en cours
     if (!this.bufferFlushInterval) {
       this.startAudioBuffering();
     }
   }
 
   private startAudioBuffering(): void {
+    this.stopAudioBuffering(); // S'assurer qu'il n'y a pas d'intervalle en cours
+    
+    // Démarrer un nouvel intervalle plus fréquent
     this.bufferFlushInterval = setInterval(() => {
-      this.flushAudioBuffer();
-    }, 100); // Flush every 100ms for smoother playback
+      if (!this.isFlushing) {
+        this.flushAudioBuffer();
+      }
+    }, this.FLUSH_INTERVAL_MS);
+    
+    console.log('[WebRTC] Audio buffering started with', this.FLUSH_INTERVAL_MS, 'ms interval');
   }
 
   private stopAudioBuffering(): void {
@@ -995,25 +1050,63 @@ export class WebRTCService extends EventEmitter {
     }
   }
 
-  private flushAudioBuffer(): void {
-    if (this.audioBuffer.length > 0 && this.audioPlaybackProcess) {
-      const combinedBuffer = Buffer.concat(this.audioBuffer);
-      this.audioBuffer = [];
+  private async flushAudioBuffer(): Promise<void> {
+    if (this.isFlushing || this.audioBuffer.length === 0 || !this.audioPlaybackProcess) {
+      return;
+    }
+
+    this.isFlushing = true;
+    const now = Date.now();
+    
+    try {
+      // Calculer la taille du chevauchement (10% du dernier buffer ou 5ms, selon le plus grand)
+      const overlapMs = Math.max(5, this.FLUSH_INTERVAL_MS * 0.1);
+      const overlapBytes = Math.floor((48000 * 2 * overlapMs) / 1000); // 48kHz, 16-bit
       
-      try {
-        // Check if process is still running
-        if (this.audioPlaybackProcess.killed) {
-          console.warn('[WebRTC] FFplay process was killed, restarting...');
-          this.startPlayback();
-          return;
-        }
+      let bufferToSend: Buffer;
+      
+      if (this.audioBuffer.length > 1) {
+        // Si on a plusieurs buffers, on garde la fin du précédent pour l'overlap
+        const lastBuffer = this.audioBuffer[this.audioBuffer.length - 1];
+        const overlapStart = Math.max(0, lastBuffer.length - overlapBytes);
+        const overlapData = lastBuffer.slice(overlapStart);
         
-        this.audioPlaybackProcess.stdin.write(combinedBuffer);
-      } catch (error) {
-        console.error('[WebRTC] Error writing to FFplay:', error);
-        // Restart playback if there's an error
-        this.startPlayback();
+        // Concaténer tous les buffers sauf le dernier, puis ajouter l'overlap
+        const mainBuffers = this.audioBuffer.slice(0, -1);
+        bufferToSend = Buffer.concat([...mainBuffers, overlapData]);
+        
+        // Garder le dernier buffer pour le prochain flush
+        this.audioBuffer = [lastBuffer];
+      } else {
+        // Un seul buffer, pas d'overlap possible
+        bufferToSend = Buffer.concat(this.audioBuffer);
+        this.audioBuffer = [];
       }
+      
+      // Écrire les données si le processus est toujours actif
+      if (this.audioPlaybackProcess && !this.audioPlaybackProcess.killed) {
+        await new Promise<void>((resolve, reject) => {
+          this.audioPlaybackProcess.stdin.write(bufferToSend, (error: Error | null | undefined) => {
+            if (error) {
+              console.error('[WebRTC] Error writing to FFplay:', error);
+              reject(error);
+            } else {
+              resolve();
+            }
+          });
+        });
+        
+        const flushDuration = Date.now() - now;
+        if (flushDuration > 10) { // Log uniquement si le flush prend du temps
+          console.log(`[WebRTC] Flushed ${bufferToSend.length} bytes in ${flushDuration}ms`);
+        }
+      }
+    } catch (error) {
+      console.error('[WebRTC] Error in flushAudioBuffer:', error);
+      this.handlePlaybackError(error as Error);
+    } finally {
+      this.isFlushing = false;
+      this.lastFlushTime = Date.now();
     }
   }
 } 
