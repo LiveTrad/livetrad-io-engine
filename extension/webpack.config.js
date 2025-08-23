@@ -48,10 +48,6 @@ module.exports = {
           from: 'src/sidebar/sidebar.html',
           to: 'sidebar.html'
         },
-        {
-          from: 'dist/webrtc-injector.js',
-          to: 'webrtc-injector.js'
-        },
 
       ],
     }),
