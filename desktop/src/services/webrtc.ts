@@ -1086,4 +1086,4 @@ export class WebRTCService extends EventEmitter {
       this.isFlushing = false;
     }
   }
-} 
+}
