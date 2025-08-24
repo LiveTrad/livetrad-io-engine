@@ -1,5 +1,4 @@
 import { AudioCaptureState, MessageType, ResponseType, TabInfo } from '../types';
-import { AudioCaptureService } from '../services/audioCaptureService';
 
 class AudioCaptureManager {
   private state: AudioCaptureState = {
@@ -8,12 +7,9 @@ class AudioCaptureManager {
     stream: null
   };
 
-  private audioCaptureService: AudioCaptureService;
-  private useWebRTC: boolean = true;
   private activeTabId: number | null = null;
 
   constructor() {
-    this.audioCaptureService = new AudioCaptureService();
     this.initializeListeners();
   }
 
@@ -21,7 +17,7 @@ class AudioCaptureManager {
     // Listen for tab removal to update streaming state
     chrome.tabs.onRemoved.addListener((tabId) => {
       if (this.state.activeTabId === tabId) {
-        this.audioCaptureService.stopStreaming(tabId);
+        // TODO: Stop streaming for this tab
       }
       this.updateAvailableTabs();
       this.notifyStreamingStateChanged();
@@ -70,6 +66,7 @@ class AudioCaptureManager {
                 
                 response = { success: true, data: { success: true } };
               } catch (error) {
+                // Reset state here to be sure that there is nothing left
                 console.error('[Background] Error starting streaming:', error);
                 response = { 
                   success: false, 
@@ -108,7 +105,6 @@ class AudioCaptureManager {
                   error: `Failed to stop streaming: ${(error as Error).message}` 
                 };
               }
-              
               this.notifyStreamingStateChanged();
               break;
             case 'GET_STREAMING_STATE':
@@ -119,9 +115,7 @@ class AudioCaptureManager {
               response = { success: true, tabs };
               break;
             case 'CONNECT_DESKTOP':
-              console.log(`[Background] Connecting to desktop with WebRTC: ${this.useWebRTC}`);
-              if (this.useWebRTC) {
-                console.log('[Background] Using real WebRTC content script relay');
+              console.log(`[Background] Connecting to desktop`);
                 try {
                   const connectResponse = await this.sendMessageToWebRTC({
                     type: 'WEBRTC_CONNECT'
@@ -132,22 +126,13 @@ class AudioCaptureManager {
                   console.error('[Background] WebRTC connection error:', error);
                   response = { success: false, error: (error as Error).message || 'WebRTC connection failed' };
                 }
-              } else {
-                console.log('[Background] Using WebSocket connection');
-                response = await this.audioCaptureService.connectToDesktop();
-              }
               break;
             case 'DISCONNECT_DESKTOP':
-              if (this.useWebRTC) {
                 console.log('[Background] Disconnecting WebRTC');
                 await this.sendMessageToWebRTC({
                   type: 'WEBRTC_DISCONNECT'
                 });
                 response = { success: true, data: { status: 'disconnected' } };
-              } else {
-                this.audioCaptureService.disconnectFromDesktop();
-                response = { success: true, data: { status: 'disconnected' } };
-              }
               break;
             case 'CAPTURE_TAB_AUDIO':
               console.log('[Background] Capturing tab audio...');
@@ -159,22 +144,16 @@ class AudioCaptureManager {
                 response = { success: false, error: (error as Error).message };
               }
               break;
-            case 'TOGGLE_WEBRTC':
-              this.useWebRTC = !this.useWebRTC;
-              response = { success: true, data: { useWebRTC: this.useWebRTC } };
-              break;
             default:
               response = { success: false, error: 'Unknown message type' };
-          }
-          
+          }     
           sendResponse(response);
         } catch (error) {
           console.error('Error handling message:', error);
           sendResponse({ success: false, error: String(error) });
         }
       })();
-
-      return true; // Keep the message channel open for async response
+      return true;
     });
 
     chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
