@@ -213,6 +213,24 @@
             color: #00ff88;
             border: 1px solid rgba(0, 255, 136, 0.3);
         }
+
+        .connection-status.connecting {
+            background: rgba(255, 193, 7, 0.1); /* Orange clair */
+            color: #ffc107; /* Orange */
+            border: 1px solid rgba(255, 193, 7, 0.3);
+        }
+        
+        .connection-status.connecting .status-dot {
+            background-color: #ffc107;
+            box-shadow: 0 0 8px #ffc107;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
         
         .connection-status.disconnected {
             background: rgba(255, 64, 64, 0.1);

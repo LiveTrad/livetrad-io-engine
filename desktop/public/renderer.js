@@ -32,22 +32,38 @@ function enableAppControls(enabled) {
     });
 }
 
-function updateStatus(isConnected, details = {}) {
+function updateStatus(status, details = {}) {
     const connectionStatus = document.getElementById('connectionStatus');
     if (!connectionStatus) return;
+
+    // Supprimer toutes les classes d'état
+    connectionStatus.classList.remove('connected', 'disconnected', 'connecting');
     
-    if (isConnected) {
-        connectionStatus.classList.remove('disconnected');
+    // Mettre à jour l'état en fonction du statut reçu
+    if (status === 'connected') {
         connectionStatus.classList.add('connected');
         const statusText = connectionStatus.querySelector('span');
         if (statusText) statusText.textContent = 'Connected';
-    } else {
-        connectionStatus.classList.remove('connected');
+    } 
+    else if (status === 'connecting') {
+        connectionStatus.classList.add('connecting');
+        const statusText = connectionStatus.querySelector('span');
+        if (statusText) statusText.textContent = 'Connecting';
+    }
+    else {
+        // Pour 'disconnected' ou tout autre état
         connectionStatus.classList.add('disconnected');
         const statusText = connectionStatus.querySelector('span');
         if (statusText) statusText.textContent = 'Disconnected';
     }
+
+    // Mettre à jour les détails de connexion si disponibles
+    if (details) {
+        console.log('Connection details:', details);
+        // Vous pouvez ajouter ici la logique pour afficher plus de détails si nécessaire
+    }
 }
+
 // Function to handle audio data (if needed)
 function handleAudioData(audioData) {
     // Simple counter for received audio chunks
@@ -60,8 +76,9 @@ function handleAudioData(audioData) {
 
 // Listen for connection changes
 window.api.onConnectionChange((status, details) => {
+    const isConnected = status || details.connectedState === 'connected';
     console.log('Connection status changed:', status, 'details:', details);
-    updateStatus(status, details);
+    updateStatus(isConnected, details);
 });
 
 // Listen for audio data
