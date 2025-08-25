@@ -189,8 +189,18 @@
             border-radius: 8px;
             font-size: 13px;
             font-weight: 500;
-            cursor: pointer;
             transition: all 0.2s ease;
+        }
+
+        .connection-status {
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+        
+        .connection-status * {
+            pointer-events: none;
         }
 
         .connection-status:hover{

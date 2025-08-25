@@ -83,9 +83,6 @@ class LiveTradApp {
         const saveSettingsBtn = document.getElementById('saveSettingsBtn');
         if (saveSettingsBtn) saveSettingsBtn.addEventListener('click', () => this.saveSettings());
         
-        const connectionStatus = document.getElementById('connectionStatus');
-        if (connectionStatus) connectionStatus.addEventListener('click', () => this.toggleConnection());
-        
         const themeSelect = document.getElementById('themeSelect');
         if (themeSelect) themeSelect.addEventListener('change', (e) => this.changeTheme(e.target.value));
         
@@ -491,25 +488,6 @@ class LiveTradApp {
                 sessionTime.textContent = 
                     `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
             }, 1000);
-        }
-    }
-    
-    toggleConnection() {
-        const status = document.getElementById('connectionStatus');
-        if (status) {
-            const isConnected = status.classList.contains('connected');
-            
-            if (isConnected) {
-                status.classList.remove('connected');
-                status.classList.add('disconnected');
-                status.innerHTML = '<div class="status-dot"></div><span>Disconnected</span>';
-                this.showNotification('Connection lost', 'error');
-            } else {
-                status.classList.remove('disconnected');
-                status.classList.add('connected');
-                status.innerHTML = '<div class="status-dot"></div><span>Connected</span>';
-                this.showNotification('Connection restored', 'success');
-            }
         }
     }
     
