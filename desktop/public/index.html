@@ -2,521 +2,257 @@
 <html>
 <head>
     <title>LiveTrad Desktop</title>
-    <script src="audioVisualizer.js"></script>
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Source Code Pro', 'Menlo', 'Consolas', monospace;
-            margin: 0;
-            padding: 0;
-            background: linear-gradient(135deg, #0c0c0c 0%, #1a1a1a 100%);
-            color: #e0e0e0;
-            min-height: 100vh;
-            font-size: 13px;
-            line-height: 1.5;
-        }
-        
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            background: rgba(20, 20, 20, 0.95);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            padding: 32px;
-            margin-top: 20px;
-            margin-bottom: 20px;
-        }
-        
-        h1 {
-            color: #00ff88;
-            text-align: center;
-            margin-bottom: 32px;
-            font-size: 24px;
-            font-weight: 500;
-            letter-spacing: 0.5px;
-            text-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
-        }
-        
-        .status {
-            padding: 16px 20px;
-            border-radius: 8px;
-            margin-bottom: 24px;
-            font-weight: 500;
-            text-align: center;
-            font-size: 14px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            background: rgba(0, 0, 0, 0.3);
-            font-family: inherit;
-        }
-        
-        .status::before {
-            content: '';
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            margin-right: 10px;
-        }
-        
-        .connected {
-            background: linear-gradient(135deg, rgba(0, 255, 136, 0.1) 0%, rgba(0, 200, 100, 0.1) 100%);
-            color: #00ff88;
-            border: 1px solid rgba(0, 255, 136, 0.3);
-            box-shadow: 0 0 20px rgba(0, 255, 136, 0.1);
-        }
-        
-        .connected::before {
-            background: #2e7d32;
-        }
-        
-        .disconnected {
-            background: linear-gradient(135deg, rgba(255, 64, 64, 0.1) 0%, rgba(200, 0, 0, 0.1) 100%);
-            color: #ff6b6b;
-            border: 1px solid rgba(255, 64, 64, 0.3);
-            box-shadow: 0 0 20px rgba(255, 64, 64, 0.1);
-        }
-        
-        .disconnected::before {
-            background: #c62828;
-        }
-        
-        #stats {
-            display: none;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.4);
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            border-radius: 8px;
-            margin-bottom: 24px;
-            backdrop-filter: blur(5px);
-        }
-        
-        #stats h3 {
-            color: #00ff88;
-            margin-top: 0;
-            margin-bottom: 16px;
-            font-size: 14px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .stat-item {
-            margin-bottom: 12px;
-            padding: 10px 14px;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            font-size: 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .stat-item strong {
-            color: #00ff88;
-            font-weight: 600;
-            min-width: 120px;
-        }
-        
-        .stat-item span {
-            color: #ffffff;
-            font-family: inherit;
-        }
-        
-        .section {
-            margin-bottom: 24px;
-            padding: 20px;
-            background: rgba(255, 255, 255, 0.02);
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(5px);
-        }
-        
-        #audioMonitor {
-            margin-top: 20px;
-            padding: 20px;
-            background: rgba(255, 255, 255, 0.02);
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(5px);
-        }
-        
-        #audioLevel {
-            width: 100%;
-            height: 24px;
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .audio-level-bar {
-            height: 100%;
-            background: linear-gradient(90deg, #00ff88 0%, #ffaa00 50%, #ff4444 80%, #ff0066 100%);
-            width: 0%;
-            transition: width 0.1s ease;
-            box-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
-        }
-        
-        #streamingStatus {
-            margin-top: 12px;
-            padding: 8px 12px;
-            background: rgba(0, 0, 0, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            font-size: 12px;
-            color: #ffffff;
-            text-align: center;
-            font-weight: 500;
-        }
-        
-        .audio-stats {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-top: 16px;
-            font-size: 12px;
-        }
-        
-        .audio-stats span {
-            padding: 8px 12px;
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
-            color: #e0e0e0;
-            font-family: inherit;
-            text-align: center;
-        }
-        
-        #muteButton {
-            padding: 8px 16px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 6px;
-            cursor: pointer;
-            background: rgba(0, 0, 0, 0.3);
-            color: #e0e0e0;
-            font-family: inherit;
-            font-size: 12px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        
-        #muteButton:hover {
-            background: rgba(0, 0, 0, 0.5);
-            border-color: rgba(255, 255, 255, 0.3);
-            transform: translateY(-1px);
-        }
-        
-        .btn {
-            padding: 8px 16px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            background: rgba(0, 255, 136, 0.1);
-            color: #00ff88;
-            cursor: pointer;
-            border-radius: 6px;
-            font-family: inherit;
-            font-size: 12px;
-            font-weight: 500;
-            transition: all 0.2s ease;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-        
-        .btn:hover {
-            background: rgba(0, 255, 136, 0.2);
-            border-color: rgba(0, 255, 136, 0.4);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0, 255, 136, 0.2);
-        }
-        
-        .btn.active {
-            background: rgba(0, 255, 136, 0.3);
-            border-color: #00ff88;
-            box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
-        }
-        
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .transcription-section {
-            margin-top: 24px;
-            padding: 24px;
-            background: rgba(0, 0, 0, 0.4);
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            border-radius: 12px;
-            backdrop-filter: blur(10px);
-        }
-        
-        .transcription-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .transcription-title {
-            color: #00ff88;
-            font-size: 16px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin: 0;
-        }
-        
-        .transcription-controls {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-        }
-        .transcription-controls {
-            margin-bottom: 15px;
-        }
-        .transcription-status {
-            margin-bottom: 12px;
-            padding: 10px 12px;
-            background: rgba(0, 0, 0, 0.2);
-            border: 1px solid rgba(0, 200, 83, 0.3);
-            border-radius: 6px;
-            color: #e0e0e0;
-            font-size: 13px;
-            font-weight: 500;
-        }
-        
-        .transcription-status.recording {
-            background: rgba(255, 64, 64, 0.15);
-            border-color: rgba(255, 64, 64, 0.4);
-            color: #ff8a80;
-            animation: pulse 2s infinite;
-        }
-        
-        .transcription-display {
-            max-height: 400px;
-            overflow-y: auto;
-            background: rgba(30, 30, 30, 0.9);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 16px;
-            font-family: 'SF Mono', 'Roboto Mono', monospace;
-            font-size: 13px;
-            line-height: 1.6;
-            color: #f5f5f5;
-            scrollbar-width: thin;
-            scrollbar-color: rgba(0, 200, 83, 0.5) rgba(0, 0, 0, 0.2);
-        }
-        
-        .youtube-style {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        /* Styles pour le spectrogramme */
-        .audio-visualizer {
-            margin: 20px 0;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 8px;
-            padding: 15px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        #spectrogram {
-            width: 100%;
-            height: 150px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 6px;
-            margin-bottom: 12px;
-            display: block;
-        }
-        
-        .audio-controls {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-top: 8px;
-        }
-        
-        .control-button {
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: #fff;
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-        }
-        
-        .control-button:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-        
-        .volume-slider {
-            flex: 1;
-            height: 6px;
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            appearance: none;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 3px;
-            outline: none;
-        }
-        
-        .volume-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: #00ff88;
-            cursor: pointer;
-        }
-        
-        .current-transcription {
-            background: rgba(33, 150, 243, 0.1);
-            border-left: 3px solid #2196F3;
-            padding: 14px 16px;
-            border-radius: 8px;
-            color: #e3f2fd;
-            min-height: 24px;
-            font-size: 14px;
-            line-height: 1.6;
-            font-weight: 500;
-            margin: 12px 0;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        
-        .current-transcription:empty::after {
-            content: "En attente de transcription...";
-            color: #90caf9;
-            font-style: italic;
-        }
-        
-        .completed-transcriptions {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: 8px;
-        }
-        
-        .completed-transcript {
-            padding: 12px 16px;
-            background: rgba(30, 30, 30, 0.7);
-            border-radius: 8px;
-            font-size: 13px;
-            line-height: 1.5;
-            color: #e0e0e0;
-            border-left: 3px solid #4CAF50;
-            transition: all 0.2s ease;
-        }
-        
-        .completed-transcript:hover {
-            background: rgba(40, 40, 40, 0.9);
-            transform: translateX(4px);
-        }
-        
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.8; }
-            100% { opacity: 1; }
-        }
-        
-        .language-indicator {
-            background: #2196F3;
-            color: white;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            margin-left: 10px;
-        }
-        .transcript-item {
-            margin-bottom: 8px;
-            padding: 5px;
-            border-radius: 3px;
-        }
-        .transcript-final {
-            background: #e8f5e9;
-            border-left: 3px solid #4CAF50;
-        }
-        .transcript-interim {
-            background: #fff3e0;
-            border-left: 3px solid #ff9800;
-            font-style: italic;
-        }
-        .transcript-confidence {
-            font-size: 0.8em;
-            color: #666;
-            margin-left: 10px;
-        }
-        .error-message {
-            background: #ffebee;
-            color: #c62828;
-            padding: 10px;
-            border-radius: 4px;
-            margin-top: 10px;
-        }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="stylesheet" href="style.css">
 </head>
-<body>
-    <div class="container">
-        <div id="status" class="status disconnected">Waiting for connection...</div>
-        <div id="stats"></div>
-        
-        <!-- Spectrogramme audio et contrôles -->
-        <div id="audioMonitor">
-            <h3>Audio Streaming Monitor</h3>
-            <div class="audio-visualizer">
-                <canvas id="spectrogram" width="800" height="150"></canvas>
-                <div class="audio-controls">
-                    <button id="muteButton" class="control-button">
-                        <span id="muteIcon">🔊</span>
-                    </button>
-                    <input type="range" id="volumeSlider" min="0" max="100" value="80" class="volume-slider">
-                    <span id="volumeValue" class="volume-value">80%</span>
+<body class="theme-hacker">
+    <div class="app-container">
+        <div class="app-header">
+            <div class="header-left">
+                <h1 class="app-title">LiveTrad Desktop</h1>
+                <div class="connection-status connected" id="connectionStatus">
+                    <div class="status-dot"></div>
+                    <span style="pointer-events: none;">Connected</span>
                 </div>
             </div>
-            <div id="audioLevel">
-                <div id="audioLevelBar"></div>
+            <div class="header-right">
+                <button class="settings-btn" id="settingsTrigger">
+                    <i data-lucide="settings" class="btn-icon"></i>
+                    Settings
+                </button>
+                <div class="user-profile" id="userProfile">
+                    <div class="user-avatar">JD</div>
+                    <div class="user-info">
+                        <div class="user-name">John Doe</div>
+                        <div class="user-plan">Pro Plan</div>
+                    </div>
+                </div>
             </div>
-            <div class="audio-stats">
-                <span id="audioChunksReceived">Chunks received: 0</span>
-                <span id="averageLevel">Average level: 0 dB</span>
-            </div>
-            <div id="streamingStatus">No audio streaming</div>
         </div>
-
-        <div id="transcriptionSection" class="transcription-section">
-            <h3>Transcription en temps réel</h3>
-            <div class="transcription-controls">
-                <input type="checkbox" id="toggleTranscriptionCheckbox" />
-                <label for="toggleTranscriptionCheckbox">Activer la transcription Deepgram</label>
-                <div id="transcriptionStatus" class="transcription-status">Transcription: DÉSACTIVÉE</div>
-            </div>
-            <div id="transcriptionDisplay" class="transcription-display youtube-style">
-                <div class="current-transcription" id="currentTranscription">
-                    <span style="color: #666; font-style: italic;">En attente de transcription...</span>
+        
+        <div class="app-content">
+            <div class="main-panel">
+                <div class="card transcription-card">
+                    <div class="card-header">
+                        <h3 class="card-title">Live Transcription</h3>
+                        <div class="action-buttons">
+                            <button class="btn" id="exportBtn">
+                                <i data-lucide="download" class="btn-icon"></i>
+                                Export
+                            </button>
+                            <button class="btn" id="clearBtn">
+                                <i data-lucide="trash-2" class="btn-icon"></i>
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div class="transcription-controls">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggleTranscription">
+                                <div class="toggle-slider"></div>
+                            </label>
+                            <span class="toggle-label">Enable Transcription</span>
+                            
+                            <div class="transcription-status" id="transcriptionStatus">Inactive</div>
+                            
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="autoTranslate">
+                                <div class="toggle-slider"></div>
+                            </label>
+                            <span class="toggle-label">Auto-Translate</span>
+                        </div>
+                        
+                        <div class="transcription-display" id="transcriptionDisplay">
+                            <div class="current-transcription" id="currentTranscription">
+                                <span class="confidence-badge" id="confidenceBadge">--</span>
+                            </div>
+                            <div class="completed-transcriptions" id="completedTranscriptions">
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="completed-transcriptions" id="completedTranscriptions">
-                    <!-- Les transcriptions finales apparaîtront ici -->
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Session Stats</h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-value" id="chunksReceived">0</div>
+                                <div class="stat-label">Chunks</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="transcriptCount">0</div>
+                                <div class="stat-label">Transcripts</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="sessionTime">00:00</div>
+                                <div class="stat-label">Duration</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="sessionTime">00</div>
+                                <div class="stat-label">Intensité Audio (dB)</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div id="transcriptionError" class="error-message" style="display: none;"></div>
+            
+            <div class="sidebar">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Languages</h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="lang-section-title">Source Language</div>
+                        <div class="language-selector">
+                            <div class="lang-option active" data-lang="auto">Auto</div>
+                            <div class="lang-option" data-lang="fr">Français</div>
+                            <div class="lang-option" data-lang="en">English</div>
+                            <div class="lang-option" data-lang="es">Español</div>
+                            <div class="lang-option" data-lang="de">Deutsch</div>
+                            <div class="lang-option" data-lang="it">Italiano</div>
+                        </div>
+                        
+                        <div class="lang-section-title">Target Language</div>
+                        <div class="language-selector">
+                            <div class="lang-option" data-target="en">English</div>
+                            <div class="lang-option active" data-target="fr">Français</div>
+                            <div class="lang-option" data-target="es">Español</div>
+                            <div class="lang-option" data-target="de">Deutsch</div>
+                            <div class="lang-option" data-target="it">Italiano</div>
+                            <div class="lang-option" data-target="pt">Português</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
+
+    <div class="profile-settings-panel" id="profileSettingsPanel">
+        <div class="setting-item">
+            <label class="setting-label">User Name</label>
+            <input type="text" class="setting-input" id="userNameInput" value="John Doe">
+        </div>
+        
+        <div class="setting-item">
+            <label class="setting-label">Voice Type</label>
+            <select class="setting-select" id="profileVoiceType">
+                <option value="user">User Voice (Cloned)</option>
+                <option value="generic">Generic Voice</option>
+            </select>
+        </div>
+        
+        <div class="setting-item" id="genericVoiceProfileSettings">
+            <label class="setting-label">Generic Voice</label>
+            <select class="setting-select" id="genericVoiceProfile">
+                <option value="auto">Auto-detect</option>
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+            </select>
+        </div>
+        
+        <div class="setting-item" id="voiceVariantProfileSettings" style="display: none;">
+            <label class="setting-label">Voice Variant</label>
+            <select class="setting-select" id="voiceVariantProfile">
+            </select>
+        </div>
+        
+        <div class="action-buttons">
+            <button class="btn" id="saveProfileBtn">
+                <i data-lucide="save" class="btn-icon"></i>
+                Save
+            </button>
+            <button class="btn" id="cancelProfileBtn">
+                <i data-lucide="x" class="btn-icon"></i>
+                Cancel
+            </button>
+        </div>
+    </div>
+
+    <div class="settings-panel" id="settingsPanel">
+        <div class="setting-item theme-settings">
+            <label class="setting-label">Theme</label>
+            <select class="setting-select" id="themeSelect">
+                <option value="hacker">Hacker</option>
+                <option value="ocean">Ocean</option>
+                <option value="dark-nebula">Dark Nebula</option>
+            </select>
+        </div>
+        
+        <div class="setting-item font-settings">
+            <label class="setting-label">Font</label>
+            <select class="setting-select" id="fontSelect">
+                <option value="Inter">Inter</option>
+                <option value="Arial, Helvetica, sans-serif">Arial</option>
+                <option value="Roboto">Roboto</option>
+                <option value="system-ui">System UI</option>
+            </select>
+        </div>
+        
+        <div class="setting-item">
+            <label class="setting-label">Transcription Service</label>
+            <select class="setting-select" id="transcriptionService">
+                <option value="deepgram">Deepgram</option>
+                <option value="whisper">OpenAI Whisper</option>
+                <option value="azure">Azure Speech</option>
+                <option value="google">Google Speech-to-Text</option>
+                <option value="assemblyai">AssemblyAI</option>
+            </select>
+        </div>
+        
+        <div class="setting-item">
+            <label class="setting-label">Translation Service</label>
+            <select class="setting-select" id="translationService">
+                <option value="google">Google Translate</option>
+                <option value="deepl">DeepL</option>
+                <option value="azure">Azure Translator</option>
+                <option value="openai">OpenAI GPT</option>
+                <option value="anthropic">Claude</option>
+            </select>
+        </div>
+        
+        <div class="setting-item">
+            <label class="setting-label">TTS Voice Service</label>
+            <select class="setting-select" id="ttsService">
+                <option value="elevenlabs">ElevenLabs</option>
+                <option value="openai">OpenAI TTS</option>
+                <option value="azure">Azure Speech</option>
+                <option value="google">Google Cloud TTS</option>
+                <option value="aws">Amazon Polly</option>
+            </select>
+        </div>
+        
+        <div class="setting-item">
+            <label class="setting-label">Audio Quality</label>
+            <select class="setting-select" id="audioQuality">
+                <option value="16000">16 kHz</option>
+                <option value="44100" selected>44.1 kHz</option>
+                <option value="48000">48 kHz</option>
+            </select>
+        </div>
+        
+        <div class="setting-item">
+            <label class="setting-label">Chunk Size (ms)</label>
+            <input type="number" class="setting-input" id="chunkSize" value="1000" min="500" max="5000">
+        </div>
+        
+        <div class="action-buttons">
+            <button class="btn" id="resetBtn">
+                <i data-lucide="refresh-cw" class="btn-icon"></i>
+                Reset
+            </button>
+            <button class="btn" id="saveSettingsBtn">
+                <i data-lucide="save" class="btn-icon"></i>
+                Save
+            </button>
+        </div>
+    </div>
+
+    <script src="scripts.js"></script>
     <script src="renderer.js"></script>
 </body>
 </html>

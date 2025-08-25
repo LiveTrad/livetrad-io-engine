@@ -1,14 +1,5 @@
 // Audio monitoring state
 let audioChunksCount = 0;
-let lastAudioLevel = 0;
-let isPlaying = true; // Par défaut à true pour le démarrage automatique
-let isMuted = false;
-let volume = 0.8; // Volume par défaut à 80%
-
-// Audio context et visualisation
-let audioContext;
-let audioVisualizer;
-let audioStream;
 
 // Transcription state
 let isTranscriptionActive = false;
@@ -29,408 +20,106 @@ function formatDateTime(timestamp) {
     }
 }
 
-// Update connection status with detailed information
-function updateStatus(isConnected, details = {}) {
-    const statusElement = document.getElementById('status');
-    const statsElement = document.getElementById('stats');
-    const connectionDetailsElement = document.getElementById('connection-details');
-    const streamInfoElement = document.getElementById('stream-info');
-    const connectionTime = details.timestamp ? new Date(details.timestamp) : new Date();
-    
-    if (isConnected) {
-        statusElement.className = 'status connected';
-        statusElement.textContent = 'Connected';
-        statusElement.title = `Connected at ${connectionTime.toLocaleString()}`;
-        
-        // Update connection details
-        let detailsHtml = `
-            <h3>Connection Details</h3>
-            <div class="stat-item">
-                <strong>Client ID:</strong> ${details.clientId || 'Unknown'}
-            </div>
-            <div class="stat-item">
-                <strong>Desktop URL:</strong> ${details.desktopUrl || 'N/A'}
-            </div>
-            <div class="stat-item">
-                <strong>Connected Since:</strong> ${formatDateTime(details.timestamp)}
-            </div>
-            <div class="stat-item">
-                <strong>ICE State:</strong> <span class="state-${details.iceState?.toLowerCase() || 'unknown'}">${details.iceState || 'Unknown'}</span>
-            </div>
-            <div class="stat-item">
-                <strong>Connection State:</strong> <span class="state-${details.connectionState?.toLowerCase() || 'unknown'}">${details.connectionState || 'Unknown'}</span>
-            </div>
-            <div class="stat-item">
-                <strong>Signaling State:</strong> ${details.signalingState || 'Unknown'}
-            </div>
-        `;
-        
-        // Update stream info if available
-        let streamInfoHtml = '';
-        if (details.streamInfo) {
-            const { hasAudio, hasVideo, codecs } = details.streamInfo;
-            streamInfoHtml = `
-                <h3>Stream Information</h3>
-                <div class="stat-item">
-                    <strong>Audio:</strong> ${hasAudio ? '✅ Active' : '❌ Not active'}
-                </div>
-                <div class="stat-item">
-                    <strong>Video:</strong> ${hasVideo ? '✅ Active' : '❌ Not active'}
-                </div>
-            `;
-            
-            if (codecs && codecs.length > 0) {
-                streamInfoHtml += `
-                    <div class="stat-subsection">
-                        <h4>Codecs</h4>
-                        ${codecs.map(codec => `
-                            <div class="stat-item">
-                                <strong>${codec.kind}:</strong> ${codec.codec.split('/')[1] || codec.codec}
-                                <span class="codec-state">
-                                    ${codec.enabled ? '✅' : '❌'} ${codec.readyState}
-                                </span>
-                            </div>
-                        `).join('')}
-                    </div>
-                `;
-            }
+// Fonction pour activer/désactiver les contrôles de l'application
+function enableAppControls(enabled) {
+    const controls = document.querySelectorAll('.control');
+    controls.forEach(control => {
+        if (enabled) {
+            control.removeAttribute('disabled');
+        } else {
+            control.setAttribute('disabled', 'disabled');
         }
-        
-        statsElement.innerHTML = detailsHtml;
-        streamInfoElement.innerHTML = streamInfoHtml;
-        
-        // Show both sections
-        statsElement.style.display = 'block';
-        streamInfoElement.style.display = 'block';
-    } else {
-        statusElement.className = 'status disconnected';
-        statusElement.textContent = 'Disconnected';
-        statusElement.title = 'Waiting for connection...';
-        
-        // Clear details but keep the containers
-        statsElement.innerHTML = '<h3>Connection Details</h3><p>Not connected</p>';
-        streamInfoElement.innerHTML = '<h3>Stream Information</h3><p>No active stream</p>';
-        
-        // Show both sections but with disabled state
-        statsElement.style.display = 'block';
-        streamInfoElement.style.display = 'block';
-        statsElement.classList.add('disabled');
-        streamInfoElement.classList.add('disabled');
-        
-        resetAudioMonitor();
+    });
+}
+
+function updateStatus(status, details = {}) {
+    const connectionStatus = document.getElementById('connectionStatus');
+    if (!connectionStatus) return;
+
+    // Supprimer toutes les classes d'état
+    connectionStatus.classList.remove('connected', 'disconnected', 'connecting');
+    
+    // Mettre à jour l'état en fonction du statut reçu
+    if (status === 'connected') {
+        connectionStatus.classList.add('connected');
+        const statusText = connectionStatus.querySelector('span');
+        if (statusText) statusText.textContent = 'Connected';
+    } 
+    else if (status === 'connecting') {
+        connectionStatus.classList.add('connecting');
+        const statusText = connectionStatus.querySelector('span');
+        if (statusText) statusText.textContent = 'Connecting';
+    }
+    else {
+        // Pour 'disconnected' ou tout autre état
+        connectionStatus.classList.add('disconnected');
+        const statusText = connectionStatus.querySelector('span');
+        if (statusText) statusText.textContent = 'Disconnected';
+    }
+
+    // Mettre à jour les détails de connexion si disponibles
+    if (details) {
+        console.log('Connection details:', details);
+        // Vous pouvez ajouter ici la logique pour afficher plus de détails si nécessaire
     }
 }
 
-// Initialize audio context and visualizer
-async function initAudioVisualization() {
-    try {
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        
-        if (audioContext.state === 'suspended') {
-            await audioContext.resume();
-        }
-        
-        const dest = audioContext.createMediaStreamDestination();
-        audioStream = dest.stream;
-        
-        if (!audioVisualizer) {
-            audioVisualizer = new AudioVisualizer('spectrogram', audioContext);
-            const source = audioContext.createMediaStreamSource(audioStream);
-            audioVisualizer.connect(source);
-            audioVisualizer.start();
-        }
-        
-        console.log('Audio visualization initialized');
-        return true;
-    } catch (error) {
-        console.error('Error initializing audio visualization:', error);
-        return false;
-    }
-}
-
-// Update audio level visualization
-function updateAudioLevel(audioData) {
-    const levelBar = document.getElementById('audioLevelBar');
-    const chunksElement = document.getElementById('audioChunksReceived');
-    const averageElement = document.getElementById('averageLevel');
-    
-    // Mettre à jour le spectrogramme si disponible
-    if (audioVisualizer && audioData) {
-        // Convertir les données audio en Float32Array pour le traitement
-        const float32Array = new Float32Array(audioData.buffer);
-        const audioBuffer = audioContext.createBuffer(1, float32Array.length, 44100);
-        audioBuffer.getChannelData(0).set(float32Array);
-        
-        // Créer une source de buffer et la connecter au visualiseur
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
-        
-        // Si le contexte est suspendu (à cause de la politique de lecture automatique), le reprendre
-        if (audioContext.state === 'suspended') {
-            audioContext.resume().then(() => {
-                console.log('AudioContext resumed successfully');
-            });
-        }
-    }
-    const statusElement = document.getElementById('streamingStatus');
-
-    // Calculate audio level
-    let sum = 0;
-    for (let i = 0; i < audioData.length; i++) {
-        sum += Math.abs(audioData[i]);
-    }
-    const averageLevel = sum / audioData.length;
-    const normalizedLevel = Math.min(Math.max(averageLevel * 100, 0), 100);
-
-    // Update UI
-    levelBar.style.width = `${normalizedLevel}%`;
+// Function to handle audio data (if needed)
+function handleAudioData(audioData) {
+    // Simple counter for received audio chunks
     audioChunksCount++;
-    chunksElement.textContent = `Chunks received: ${audioChunksCount}`;
-    averageElement.textContent = `Average level: ${normalizedLevel.toFixed(2)} dB`;
-    statusElement.textContent = 'Streaming active';
-
-    lastAudioLevel = normalizedLevel;
-}
-
-// Reset audio monitor
-function resetAudioMonitor() {
-    const levelBar = document.getElementById('audioLevelBar');
     const chunksElement = document.getElementById('audioChunksReceived');
-    const averageElement = document.getElementById('averageLevel');
-    const statusElement = document.getElementById('streamingStatus');
-
-    levelBar.style.width = '0%';
-    audioChunksCount = 0;
-    chunksElement.textContent = 'Chunks received: 0';
-    averageElement.textContent = 'Average level: 0 dB';
-    statusElement.textContent = 'No audio streaming';
+    if (chunksElement) {
+        chunksElement.textContent = `Chunks received: ${audioChunksCount}`;
+    }
 }
 
 // Listen for connection changes
 window.api.onConnectionChange((status, details) => {
+    const isConnected = status || details.connectedState === 'connected';
     console.log('Connection status changed:', status, 'details:', details);
-    updateStatus(status, details);
+    updateStatus(isConnected, details);
 });
 
 // Listen for audio data
 window.api.onAudioStats((audioData) => {
-    console.log('Received audio chunk:', audioData.length, 'samples');
-    updateAudioLevel(audioData);
-});
-
-// Initialize
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        const { status, details } = await window.api.getConnectionStatus();
-        updateStatus(status, details);
-    } catch (error) {
-        console.error('Error getting connection status:', error);
-        updateStatus(false);
+    console.log('Received audio data, length:', audioData.length);
+    audioChunksCount++;
+    const chunksElement = document.getElementById('audioChunksReceived');
+    if (chunksElement) {
+        chunksElement.textContent = `Chunks received: ${audioChunksCount}`;
     }
 });
 
-// Check for audio inactivity
-setInterval(() => {
-    const statusElement = document.getElementById('streamingStatus');
-    if (audioChunksCount > 0 && Date.now() - lastAudioUpdate > 5000) {
-        statusElement.textContent = 'No audio data received for 5 seconds';
-    }
-}, 1000);
-
-// Éléments DOM
-const volumeSlider = document.getElementById('volumeSlider');
-const muteButton = document.getElementById('muteButton');
-const volumeValue = document.getElementById('volumeValue');
-
-// Activer le playback au démarrage
-async function initializePlayback() {
-    try {
-        // Activer le playback si ce n'est pas déjà fait
-        const status = await window.api.invoke('get-playback-status');
-        if (!status.isPlaying) {
-            const result = await window.api.invoke('toggle-playback');
-            if (result.success) {
-                isPlaying = true;
-                console.log('Playback started automatically');
-            }
-        } else {
-            isPlaying = true;
-        }
-        updateVolumeDisplay();
-    } catch (error) {
-        console.error('Error initializing playback:', error);
-    }
-}
-
-// Gestionnaire d'événements pour le bouton mute
-muteButton.addEventListener('click', async () => {
-    try {
-        isMuted = !isMuted;
-        updateVolumeDisplay();
-        
-        // Mettre à jour le volume dans le processus principal
-        const volumeToSet = isMuted ? 0 : volume;
-        await window.api.invoke('set-volume', { volume: volumeToSet });
-        
-        console.log(`Audio ${isMuted ? 'muted' : 'unmuted'}`);
-    } catch (error) {
-        console.error('Error toggling mute:', error);
-    }
-});
-
-// Gestionnaire d'événements pour le slider de volume
-volumeSlider.addEventListener('input', async () => {
-    try {
-        volume = parseFloat(volumeSlider.value) / 100;
-        
-        // Si on règle le volume alors qu'on est en mode muet, on désactive le muet
-        if (isMuted && volume > 0) {
-            isMuted = false;
-        }
-        
-        // Mettre à jour le volume dans le processus principal
-        const volumeToSet = isMuted ? 0 : volume;
-        await window.api.invoke('set-volume', { volume: volumeToSet });
-        
-        updateVolumeDisplay();
-        console.log(`Volume set to ${Math.round(volume * 100)}%`);
-    } catch (error) {
-        console.error('Error setting volume:', error);
-    }
-});
-
-// Mettre à jour l'affichage du volume
-function updateVolumeDisplay() {
-    const volumePercent = Math.round(volume * 100);
-    volumeValue.textContent = `${volumePercent}%`;
-    volumeSlider.value = volumePercent;
-    
-    // Mettre à jour le bouton mute
-    if (isMuted || volume === 0) {
-        muteButton.textContent = '🔇 Unmute';
-        muteButton.style.backgroundColor = '#ffeb3b';
-        volumeValue.textContent = 'Muted';
-    } else {
-        muteButton.textContent = '🔊 Mute';
-        muteButton.style.backgroundColor = '';
-    }
-}
-
-// Initialiser le playback et la visualisation audio au démarrage
+// Initialize on DOM content loaded
 document.addEventListener('DOMContentLoaded', () => {
-    initializePlayback();
+    console.log('Application initialized');
+
+    updateStatus(false, {});
     
-    // Initialiser la visualisation audio
-    if (window.AudioContext || window.webkitAudioContext) {
-        initAudioVisualization().catch(console.error);
-    } else {
-        console.warn('Web Audio API not supported in this browser');
-    }
-    
-    // Gestionnaire pour le bouton mute
-    const muteButton = document.getElementById('muteButton');
-    if (muteButton) {
-        muteButton.addEventListener('click', async () => {
-            try {
-                isMuted = !isMuted;
-                await window.api.toggleMute();
-                updateMuteButton();
-            } catch (error) {
-                console.error('Error toggling mute:', error);
-            }
+    // Check initial connection status
+    window.api.getConnectionStatus()
+        .then(({ status, details }) => {
+            console.log('Initial connection status:', status, 'details:', details);
+            updateStatus(status, details);
+        })
+        .catch(error => {
+            console.error('Error getting connection status:', error);
+            updateStatus(false);
         });
-    }
+
+    // Transcription elements (simplified)
+    const toggleTranscriptionCheckbox = document.getElementById('toggleTranscriptionCheckbox');
     
-    // Gestionnaire pour le slider de volume
-    const volumeSlider = document.getElementById('volumeSlider');
-    if (volumeSlider) {
-        volumeSlider.addEventListener('input', async (e) => {
-            try {
-                const newVolume = parseInt(e.target.value) / 100;
-                await window.api.setVolume(newVolume);
-                volume = newVolume;
-                updateMuteButton();
-            } catch (error) {
-                console.error('Error setting volume:', error);
-            }
+    // Initialize transcription if elements exist
+    if (toggleTranscriptionCheckbox) {
+        toggleTranscriptionCheckbox.checked = isTranscriptionActive;
+        
+        toggleTranscriptionCheckbox.addEventListener('change', () => {
+            isTranscriptionActive = toggleTranscriptionCheckbox.checked;
+            console.log('Transcription toggled:', isTranscriptionActive);
+            // Add any additional transcription handling here
         });
-    }
-    
-    // Mettre à jour l'état initial des boutons
-    updateMuteButton();
-});
-
-// Mettre à jour l'apparence du bouton mute
-function updateMuteButton() {
-    const muteButton = document.getElementById('muteButton');
-    const muteIcon = document.getElementById('muteIcon');
-    const volumeSlider = document.getElementById('volumeSlider');
-    
-    if (!muteButton || !muteIcon || !volumeSlider) return;
-    
-    if (isMuted || volume === 0) {
-        muteIcon.textContent = '🔇';
-        volumeSlider.value = 0;
-    } else if (volume < 0.3) {
-        muteIcon.textContent = '🔈';
-        volumeSlider.value = volume * 100;
-    } else if (volume < 0.7) {
-        muteIcon.textContent = '🔉';
-        volumeSlider.value = volume * 100;
-    } else {
-        muteIcon.textContent = '🔊';
-        volumeSlider.value = volume * 100;
-    }
-}
-
-// Transcription elements
-const toggleTranscriptionCheckbox = document.getElementById('toggleTranscriptionCheckbox');
-const transcriptionStatus = document.getElementById('transcriptionStatus');
-const transcriptionDisplay = document.getElementById('transcriptionDisplay');
-const transcriptionError = document.getElementById('transcriptionError');
-
-// Transcription event handlers
-window.api.onTranscription((transcriptionData) => {
-    console.log('Received transcription:', transcriptionData);
-    addTranscriptionToDisplay(transcriptionData);
-});
-
-window.api.onDeepgramConnected(() => {
-    console.log('Deepgram connected');
-    transcriptionStatus.textContent = 'Transcription: CONNECTÉ';
-    transcriptionStatus.style.color = '#4CAF50';
-    hideTranscriptionError();
-});
-
-window.api.onDeepgramDisconnected(() => {
-    console.log('Deepgram disconnected');
-    transcriptionStatus.textContent = 'Transcription: DÉCONNECTÉ';
-    transcriptionStatus.style.color = '#F44336';
-});
-
-window.api.onDeepgramError((error) => {
-    console.error('Deepgram error:', error);
-    showTranscriptionError(`Erreur Deepgram: ${error.message || 'Erreur inconnue'}`);
-});
-
-// Transcription checkbox handler
-toggleTranscriptionCheckbox.addEventListener('change', async () => {
-    try {
-        const result = await window.api.invoke('toggle-transcription');
-        if (result.success) {
-            isTranscriptionActive = result.isActive;
-            toggleTranscriptionCheckbox.checked = isTranscriptionActive;
-            updateTranscriptionStatus();
-            console.log(`Transcription ${isTranscriptionActive ? 'started' : 'stopped'}`);
-        } else {
-            console.error('Failed to toggle transcription:', result.error);
-        }
-    } catch (error) {
-        console.error('Error toggling transcription:', error);
-        showTranscriptionError(`Erreur: ${error.message}`);
     }
 });
 
