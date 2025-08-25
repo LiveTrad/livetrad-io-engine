@@ -20,76 +20,89 @@ function formatDateTime(timestamp) {
     }
 }
 
+// Fonction pour activer/désactiver les contrôles de l'application
+function enableAppControls(enabled) {
+    const controls = document.querySelectorAll('.control');
+    controls.forEach(control => {
+        if (enabled) {
+            control.removeAttribute('disabled');
+        } else {
+            control.setAttribute('disabled', 'disabled');
+        }
+    });
+}
+
 // Update connection status with detailed information
 function updateStatus(isConnected, details = {}) {
     const statusElement = document.getElementById('status');
-    const statsElement = document.getElementById('stats');
-    const connectionDetailsElement = document.getElementById('connection-details');
-    const streamInfoElement = document.getElementById('stream-info');
+    const connectionStatus = document.getElementById('connectionStatus');
     const connectionTime = details.timestamp ? new Date(details.timestamp) : new Date();
     
+    // Mettre à jour les classes CSS en fonction de l'état de connexion
     if (isConnected) {
-        statusElement.className = 'status connected';
-        statusElement.textContent = 'Connected';
-        statusElement.title = `Connected at ${connectionTime.toLocaleString()}`;
+        document.body.classList.add('connected');
+        document.body.classList.remove('disconnected');
         
-        // Update connection details
+        // Mise à jour des éléments d'interface
+        statusElement.textContent = 'Connecté';
+        statusElement.className = 'status connected';
+        
+        // Mettre à jour les détails de connexion
         let detailsHtml = `
-            <h3>Connection Details</h3>
-            <div class="stat-item">
-                <strong>Client ID:</strong> ${details.clientId || 'Unknown'}
-            </div>
-            <div class="stat-item">
-                <strong>Desktop URL:</strong> ${details.desktopUrl || 'N/A'}
-            </div>
-            <div class="stat-item">
-                <strong>Connected Since:</strong> ${formatDateTime(details.timestamp)}
-            </div>
-            <div class="stat-item">
-                <strong>ICE State:</strong> <span class="state-${details.iceState?.toLowerCase() || 'unknown'}">${details.iceState || 'Unknown'}</span>
-            </div>
-            <div class="stat-item">
-                <strong>Connection State:</strong> <span class="state-${details.connectionState?.toLowerCase() || 'unknown'}">${details.connectionState || 'Unknown'}</span>
-            </div>
-            <div class="stat-item">
-                <strong>Signaling State:</strong> ${details.signalingState || 'Unknown'}
+            <div class="connection-details">
+                <h3>Détails de la connexion</h3>
+                <div class="stat-item">
+                    <strong>ID Client:</strong> ${details.clientId || 'Inconnu'}
+                </div>
+                <div class="stat-item">
+                    <strong>URL du bureau:</strong> ${details.desktopUrl || 'N/A'}
+                </div>
+                <div class="stat-item">
+                    <strong>Connecté depuis:</strong> ${formatDateTime(details.timestamp)}
+                </div>
+                <div class="stat-item">
+                    <strong>État ICE:</strong> <span class="state-badge ${details.iceState?.toLowerCase() || 'unknown'}">${details.iceState || 'Inconnu'}</span>
+                </div>
+                <div class="stat-item">
+                    <strong>État de la connexion:</strong> <span class="state-badge ${details.connectionState?.toLowerCase() || 'unknown'}">${details.connectionState || 'Inconnu'}</span>
+                </div>
             </div>
         `;
         
-        // Stream information
-        let streamInfoHtml = '';
-        if (details.streamInfo) {
-            const { hasAudio } = details.streamInfo;
-            streamInfoHtml = `
-                <h3>Stream Information</h3>
-                <div class="stat-item">
-                    <strong>Audio:</strong> ${hasAudio ? '✅ Active' : '❌ Not active'}
+        // Mettre à jour le contenu
+        if (connectionStatus) {
+            connectionStatus.innerHTML = detailsHtml;
+        }
+        
+        // Activer les contrôles
+        enableAppControls(true);
+        
+    } else {
+        document.body.classList.add('disconnected');
+        document.body.classList.remove('connected');
+        
+        statusElement.textContent = 'Déconnecté';
+        statusElement.className = 'status disconnected';
+        
+        // Afficher un message de déconnexion
+        if (connectionStatus) {
+            connectionStatus.innerHTML = `
+                <div class="disconnected-message">
+                    <h3>Déconnecté</h3>
+                    <p>En attente de connexion de l'extension...</p>
                 </div>
             `;
         }
         
-        statsElement.innerHTML = detailsHtml;
-        streamInfoElement.innerHTML = streamInfoHtml;
+        // Désactiver les contrôles
+        enableAppControls(false);
         
-        // Show both sections
-        statsElement.style.display = 'block';
-        streamInfoElement.style.display = 'block';
-    } else {
-        statusElement.className = 'status disconnected';
-        statusElement.textContent = 'Disconnected';
-        statusElement.title = 'Waiting for connection...';
-        
-        // Clear details but keep the containers
-        statsElement.innerHTML = '<h3>Connection Details</h3><p>Not connected</p>';
-        streamInfoElement.innerHTML = '<h3>Stream Information</h3><p>No active stream</p>';
-        
-        // Show both sections but with disabled state
-        statsElement.style.display = 'block';
-        streamInfoElement.style.display = 'block';
-        statsElement.classList.add('disabled');
-        streamInfoElement.classList.add('disabled');
-        
-        // Reset any monitoring state if needed
+            // Réinitialiser le compteur de chunks audio
+        audioChunksCount = 0;
+        const chunksElement = document.getElementById('audioChunksReceived');
+        if (chunksElement) {
+            chunksElement.textContent = 'Chunks reçus: 0';
+        }
     }
 }
 

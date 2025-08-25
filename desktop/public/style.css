@@ -17,6 +17,78 @@
             -moz-osx-font-smoothing: grayscale;
         }
         
+        /* État connecté */
+        body.connected {
+            background-color: rgba(0, 200, 83, 0.05);
+        }
+        
+        /* État déconnecté */
+        body.disconnected {
+            background-color: rgba(244, 67, 54, 0.05);
+        }
+        
+        /* Badge d'état */
+        .state-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+        
+        .state-badge.connected,
+        .state-badge.completed,
+        .state-badge.stable {
+            background-color: rgba(0, 200, 83, 0.15);
+            color: #00c853;
+        }
+        
+        .state-badge.disconnected,
+        .state-badge.failed,
+        .state-badge.closed {
+            background-color: rgba(244, 67, 54, 0.15);
+            color: #f44336;
+        }
+        
+        .state-badge.connecting,
+        .state-badge.checking {
+            background-color: rgba(255, 193, 7, 0.15);
+            color: #ffc107;
+        }
+        
+        /* Message de déconnexion */
+        .disconnected-message {
+            text-align: center;
+            padding: 20px;
+            color: #f44336;
+        }
+        
+        .disconnected-message h3 {
+            margin-top: 0;
+            color: #f44336;
+        }
+        
+        /* Statut de connexion */
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 0.9em;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .status.connected {
+            background-color: rgba(0, 200, 83, 0.15);
+            color: #00c853;
+        }
+        
+        .status.disconnected {
+            background-color: rgba(244, 67, 54, 0.15);
+            color: #f44336;
+        }
+        
         /* Theme Definitions */
         .theme-hacker {
             background: linear-gradient(135deg, #0c0c0c 0%, #1a1a1a 100%);
