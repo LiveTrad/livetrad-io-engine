@@ -32,80 +32,22 @@ function enableAppControls(enabled) {
     });
 }
 
-// Update connection status with detailed information
 function updateStatus(isConnected, details = {}) {
-    const statusElement = document.getElementById('status');
     const connectionStatus = document.getElementById('connectionStatus');
-    const connectionTime = details.timestamp ? new Date(details.timestamp) : new Date();
+    if (!connectionStatus) return;
     
-    // Mettre à jour les classes CSS en fonction de l'état de connexion
     if (isConnected) {
-        document.body.classList.add('connected');
-        document.body.classList.remove('disconnected');
-        
-        // Mise à jour des éléments d'interface
-        statusElement.textContent = 'Connecté';
-        statusElement.className = 'status connected';
-        
-        // Mettre à jour les détails de connexion
-        let detailsHtml = `
-            <div class="connection-details">
-                <h3>Détails de la connexion</h3>
-                <div class="stat-item">
-                    <strong>ID Client:</strong> ${details.clientId || 'Inconnu'}
-                </div>
-                <div class="stat-item">
-                    <strong>URL du bureau:</strong> ${details.desktopUrl || 'N/A'}
-                </div>
-                <div class="stat-item">
-                    <strong>Connecté depuis:</strong> ${formatDateTime(details.timestamp)}
-                </div>
-                <div class="stat-item">
-                    <strong>État ICE:</strong> <span class="state-badge ${details.iceState?.toLowerCase() || 'unknown'}">${details.iceState || 'Inconnu'}</span>
-                </div>
-                <div class="stat-item">
-                    <strong>État de la connexion:</strong> <span class="state-badge ${details.connectionState?.toLowerCase() || 'unknown'}">${details.connectionState || 'Inconnu'}</span>
-                </div>
-            </div>
-        `;
-        
-        // Mettre à jour le contenu
-        if (connectionStatus) {
-            connectionStatus.innerHTML = detailsHtml;
-        }
-        
-        // Activer les contrôles
-        enableAppControls(true);
-        
+        connectionStatus.classList.remove('disconnected');
+        connectionStatus.classList.add('connected');
+        const statusText = connectionStatus.querySelector('span');
+        if (statusText) statusText.textContent = 'Connected';
     } else {
-        document.body.classList.add('disconnected');
-        document.body.classList.remove('connected');
-        
-        statusElement.textContent = 'Déconnecté';
-        statusElement.className = 'status disconnected';
-        
-        // Afficher un message de déconnexion
-        if (connectionStatus) {
-            connectionStatus.innerHTML = `
-                <div class="disconnected-message">
-                    <h3>Déconnecté</h3>
-                    <p>En attente de connexion de l'extension...</p>
-                </div>
-            `;
-        }
-        
-        // Désactiver les contrôles
-        enableAppControls(false);
-        
-            // Réinitialiser le compteur de chunks audio
-        audioChunksCount = 0;
-        const chunksElement = document.getElementById('audioChunksReceived');
-        if (chunksElement) {
-            chunksElement.textContent = 'Chunks reçus: 0';
-        }
+        connectionStatus.classList.remove('connected');
+        connectionStatus.classList.add('disconnected');
+        const statusText = connectionStatus.querySelector('span');
+        if (statusText) statusText.textContent = 'Disconnected';
     }
 }
-
 // Function to handle audio data (if needed)
 function handleAudioData(audioData) {
     // Simple counter for received audio chunks
@@ -135,10 +77,13 @@ window.api.onAudioStats((audioData) => {
 // Initialize on DOM content loaded
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Application initialized');
+
+    updateStatus(false, {});
     
     // Check initial connection status
     window.api.getConnectionStatus()
         .then(({ status, details }) => {
+            console.log('Initial connection status:', status, 'details:', details);
             updateStatus(status, details);
         })
         .catch(error => {

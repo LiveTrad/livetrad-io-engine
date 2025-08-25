@@ -192,6 +192,11 @@
             cursor: pointer;
             transition: all 0.2s ease;
         }
+
+        .connection-status:hover{
+            user-select: none;
+            cursor: not-allowed;
+        }
         
         .connection-status.connected {
             background: rgba(0, 255, 136, 0.1);
@@ -205,8 +210,13 @@
             border: 1px solid rgba(255, 64, 64, 0.3);
         }
         
-        .connection-status:hover {
+        .connection-status.connected:hover {
             background: rgba(0, 255, 136, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .connection-status.disconnected:hover {
+            background: rgba(255, 64, 64, 0.15);
             transform: translateY(-1px);
         }
         
@@ -216,6 +226,16 @@
             border-radius: 50%;
             background: currentColor;
             animation: pulse 2s infinite;
+        }
+
+        .connection-status.connected .status-dot {
+            background-color: #00c853;
+            box-shadow: 0 0 8px #00c853;
+        }
+        
+        .connection-status.disconnected .status-dot {
+            background-color: #f44336;
+            box-shadow: 0 0 8px #f44336;
         }
         
         .user-profile {
