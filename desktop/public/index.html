@@ -5,9 +5,27 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="login.style.css">
 </head>
 <body class="theme-hacker">
-    <div class="app-container">
+    <!-- Écran de connexion -->
+    <div id="login-screen" class="login-screen">
+        <div class="login-container">
+            <div class="login-header">
+                <h1>LiveTrad</h1>
+                <p>Connectez-vous pour commencer</p>
+            </div>
+            <div class="login-form">
+                <input type="text" id="username" placeholder="Nom d'utilisateur" required>
+                <input type="password" id="password" placeholder="Mot de passe" required>
+                <button id="loginBtn" class="btn-primary">Se connecter</button>
+                <div id="loginError" class="error-message"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application principale (cachée par défaut) -->
+    <div class="app-container" id="main-app" style="display: none;">
         <div class="app-header">
             <div class="header-left">
                 <h1 class="app-title">LiveTrad Desktop</h1>
