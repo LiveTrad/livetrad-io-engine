@@ -59,7 +59,7 @@ export class WebSocketService extends EventEmitter {
                 try {
                     if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
                         // Handle binary audio data (PCM)
-                        const audioBuffer = Buffer.from(data);
+                        const audioBuffer = Buffer.isBuffer(data) ? data : Buffer.from(new Uint8Array(data));
                         console.log('[WebSocket] Received audio chunk:', {
                             size: audioBuffer.length,
                             timestamp: new Date().toISOString()
