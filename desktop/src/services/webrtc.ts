@@ -80,7 +80,8 @@ export class WebRTCService extends EventEmitter {
   public init(): void {
     console.log('[WebRTC] Initializing WebRTC signaling server...');
     this.signalingServer = new WebSocketServer({ 
-      port: config.webrtc.signalingPort 
+        port: config.webrtc.signalingPort,
+        clientTracking: true
     });
 
     this.setupSignalingEventListeners();
