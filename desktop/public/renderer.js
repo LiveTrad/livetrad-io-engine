@@ -1,5 +1,81 @@
-// Audio monitoring state
+// État de l'application
 let audioChunksCount = 0;
+let isAuthenticated = false;
+
+// Éléments du DOM
+const loginScreen = document.getElementById('login-screen');
+const mainApp = document.getElementById('main-app');
+const loginBtn = document.getElementById('loginBtn');
+const usernameInput = document.getElementById('username');
+const passwordInput = document.getElementById('password');
+const loginError = document.getElementById('loginError');
+
+// Récupérer ipcRenderer
+const { ipcRenderer } = window.require('electron');
+
+// Gestion de la connexion
+async function handleLogin() {
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value;
+    const loginBtn = document.getElementById('loginBtn');
+    
+    if (!username || !password) {
+        showError('Veuillez remplir tous les champs');
+        return;
+    }
+    
+    try {
+        // Désactiver le bouton pendant la tentative de connexion
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Connexion...';
+        
+        // Utiliser ipcRenderer directement
+        const result = await ipcRenderer.invoke('authenticate', { username, password });
+        if (result.success) {
+            isAuthenticated = true;
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('main-app').style.display = 'block';
+            
+            // Réinitialiser les champs
+            usernameInput.value = '';
+            passwordInput.value = '';
+            
+            // Mettre à jour l'état de connexion
+            updateStatus('connected', { message: 'Connecté avec succès' });
+        } else {
+            showError('Identifiants incorrects');
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Se connecter';
+        }
+    } catch (error) {
+        console.error('Erreur de connexion:', error);
+        showError('Erreur de connexion au serveur');
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Se connecter';
+    }
+}
+
+// Afficher un message d'erreur
+function showError(message) {
+    loginError.textContent = message;
+    setTimeout(() => {
+        loginError.textContent = '';
+    }, 3000);
+}
+
+// Écouteurs d'événements
+if (loginBtn) {
+    loginBtn.addEventListener('click', handleLogin);
+}
+
+// Permettre la soumission avec Entrée
+if (passwordInput) {
+    passwordInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            handleLogin();
+        }
+    });
+}
 
 // Transcription state
 let isTranscriptionActive = false;
@@ -217,9 +293,12 @@ function hideTranscriptionError() {
 // Initialize transcription status
 async function updateTranscriptionCheckboxState() {
     try {
-        const status = await window.api.invoke('get-transcription-status');
+        const status = await window.api.getTranscriptionStatus();
         isTranscriptionActive = status.active;
-        toggleTranscriptionCheckbox.checked = isTranscriptionActive;
+        const toggleCheckbox = document.getElementById('toggleTranscription');
+        if (toggleCheckbox) {
+            toggleCheckbox.checked = isTranscriptionActive;
+        }
         updateTranscriptionStatus();
     } catch (error) {
         console.error('Error getting transcription status:', error);
