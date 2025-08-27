@@ -655,6 +655,17 @@ export class WebRTCService extends EventEmitter {
               mono[i] = (ch0[i] + ch1[i]) * 0.5;
             }
           }
+
+          // Silence gate: skip near-silent frames
+          let peak = 0;
+          for (let i = 0; i < mono.length; i++) {
+            const v = Math.abs(mono[i]);
+            if (v > peak) peak = v;
+          }
+          if (peak < 0.003) {
+            return; // too quiet, do not send
+          }
+
           const pcm16 = this.floatTo16BitPCM(mono);
 
           if (this.transcriptionEnabled) {
