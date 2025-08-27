@@ -148,15 +148,17 @@ function handleAudioData(audioData) {
 }
 
 // Listen for connection changes
-window.api.onConnectionChange((status, details) => {
+ipcRenderer.on('connection-change', (_event, data) => {
+    const status = data?.status;
+    const details = data?.details || {};
     const isConnected = status || details.connectedState === 'connected';
     console.log('Connection status changed:', status, 'details:', details);
     updateStatus(isConnected, details);
 });
 
 // Listen for audio data
-window.api.onAudioStats((audioData) => {
-    console.log('Received audio data, length:', audioData.length);
+ipcRenderer.on('audio-stats', (_event, stats) => {
+    // We only need to count updates for UI feedback
     audioChunksCount++;
     const chunksElement = document.getElementById('audioChunksReceived');
     if (chunksElement) {
@@ -171,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateStatus(false, {});
     
     // Check initial connection status
-    window.api.getConnectionStatus()
+    ipcRenderer.invoke('get-connection-status')
         .then(({ status, details }) => {
             console.log('Initial connection status:', status, 'details:', details);
             updateStatus(status, details);
@@ -290,8 +292,8 @@ function hideTranscriptionError() {
 // Initialize transcription status
 async function updateTranscriptionCheckboxState() {
     try {
-        const status = await window.api.getTranscriptionStatus();
-        isTranscriptionActive = status.active;
+        const status = await ipcRenderer.invoke('get-transcription-status');
+        isTranscriptionActive = status.isActive || status.active;
         const toggleCheckbox = document.getElementById('toggleTranscription');
         if (toggleCheckbox) {
             toggleCheckbox.checked = isTranscriptionActive;
