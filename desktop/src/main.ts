@@ -249,6 +249,13 @@ class LiveTradApp {
             return { active: false, connected: false, hasApiKey: false };
         });
 
+        // Update transcription language/detection
+        ipcMain.handle('set-transcription-language', (_evt, { language, detectLanguage }) => {
+            if (this.wsService) this.wsService.setTranscriptionLanguage(language, detectLanguage);
+            if (this.webrtcService) this.webrtcService.setTranscriptionLanguage(language, detectLanguage);
+            return { success: true };
+        });
+
         // Tous les écouteurs d'événements sont maintenant dans initializeServices()
         // pour s'assurer qu'ils ne sont configurés qu'après l'initialisation des services
     }

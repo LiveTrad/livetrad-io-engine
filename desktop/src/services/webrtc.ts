@@ -723,6 +723,14 @@ export class WebRTCService extends EventEmitter {
     });
   }
 
+  public setTranscriptionLanguage(language?: string, detectLanguage?: boolean): void {
+    this.transcriptor.setLanguage({ language, detectLanguage });
+    if (this.transcriptionEnabled) {
+      this.transcriptor.stop();
+      this.transcriptor.start();
+    }
+  }
+
   private sendSignalingMessage(ws: WebSocket, message: WebRTCMessage): void {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(message));

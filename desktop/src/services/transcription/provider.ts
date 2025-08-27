@@ -20,6 +20,9 @@ export abstract class TranscriptionProvider extends EventEmitter {
     public abstract sendAudioData(audioBuffer: Buffer): void;
     public abstract isTranscriptionActive(): boolean;
     public abstract getConnectionStatus(): TranscriptionConnectionStatus;
+
+    // Optional configuration
+    public setLanguage?(opts: { language?: string, detectLanguage?: boolean }): void;
 }
 
 

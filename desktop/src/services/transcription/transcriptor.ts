@@ -49,6 +49,12 @@ export class LiveTradTranscriptor extends EventEmitter {
             hasApiKey: status.hasApiKey
         };
     }
+
+    public setLanguage(options: { language?: string, detectLanguage?: boolean }): void {
+        if (this.provider.setLanguage) {
+            this.provider.setLanguage(options);
+        }
+    }
 }
 
 

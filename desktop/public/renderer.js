@@ -307,6 +307,7 @@ updateTranscriptionCheckboxState();
 
 // Subscribe to transcription events from main process via preload bridge
 window.api.onTranscription((transcriptionData) => {
+    if (!isTranscriptionActive) return; // ignore when disabled
     try {
         if (!transcriptionData) return;
         addTranscriptionToDisplay(transcriptionData);

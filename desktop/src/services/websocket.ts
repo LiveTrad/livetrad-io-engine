@@ -641,6 +641,15 @@ export class WebSocketService extends EventEmitter {
         this.on('transcription', callback);
     }
 
+    public setTranscriptionLanguage(language?: string, detectLanguage?: boolean): void {
+        this.transcriptor.setLanguage({ language, detectLanguage });
+        // If already active, restart to apply new config
+        if (this.transcriptionEnabled) {
+            this.transcriptor.stop();
+            this.transcriptor.start();
+        }
+    }
+
     public onDeepgramConnected(callback: () => void): void {
         this.on('deepgram-connected', callback);
     }

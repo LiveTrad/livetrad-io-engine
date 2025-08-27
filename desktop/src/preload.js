@@ -52,6 +52,9 @@ contextBridge.exposeInMainWorld(
             
         getTranscriptionStatus: () =>
             ipcRenderer.invoke('get-transcription-status'),
+
+        setTranscriptionLanguage: (language, detectLanguage) =>
+            ipcRenderer.invoke('set-transcription-language', { language, detectLanguage }),
         
         // Event listeners
         onConnectionChange: (callback) => 

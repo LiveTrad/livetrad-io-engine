@@ -4,6 +4,8 @@ import { DeepgramService } from '../../deepgram';
 export class DeepgramProvider extends TranscriptionProvider {
     public readonly name = 'deepgram';
     private service: DeepgramService;
+    private language?: string;
+    private detectLanguage?: boolean;
 
     constructor() {
         super();
@@ -17,7 +19,11 @@ export class DeepgramProvider extends TranscriptionProvider {
     }
 
     public startTranscription(): void {
-        this.service.startTranscription();
+        if (this.language || this.detectLanguage !== undefined) {
+            this.service.startTranscription({ language: this.language, detectLanguage: this.detectLanguage });
+        } else {
+            this.service.startTranscription();
+        }
     }
 
     public stopTranscription(): void {
@@ -34,6 +40,11 @@ export class DeepgramProvider extends TranscriptionProvider {
 
     public getConnectionStatus(): TranscriptionConnectionStatus {
         return this.service.getConnectionStatus();
+    }
+
+    public setLanguage(opts: { language?: string, detectLanguage?: boolean }): void {
+        this.language = opts.language;
+        this.detectLanguage = opts.detectLanguage;
     }
 }
 

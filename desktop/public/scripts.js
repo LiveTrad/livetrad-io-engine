@@ -397,6 +397,9 @@ class LiveTradApp {
         }
         this.currentSourceLang = lang;
         this.showNotification(`Source language: ${lang}`, 'info');
+        // Apply language to backend transcription
+        const detect = !lang || lang === 'auto';
+        window.api.setTranscriptionLanguage(detect ? undefined : lang, detect);
     }
     
     selectTargetLanguage(lang) {
