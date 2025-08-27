@@ -10,8 +10,7 @@ const usernameInput = document.getElementById('username');
 const passwordInput = document.getElementById('password');
 const loginError = document.getElementById('loginError');
 
-// Récupérer ipcRenderer
-const { ipcRenderer } = window.require('electron');
+// Using secure preload bridge via window.api (no direct ipcRenderer access)
 
 // Gestion de la connexion
 async function handleLogin() {
@@ -29,8 +28,8 @@ async function handleLogin() {
         loginBtn.disabled = true;
         loginBtn.textContent = 'Connexion...';
         
-        // Utiliser ipcRenderer directement
-        const result = await ipcRenderer.invoke('authenticate', { username, password });
+        // Utiliser l'API sécurisée exposée par le preload
+        const result = await window.api.authenticate(username, password);
         if (result.success) {
             isAuthenticated = true;
             document.getElementById('login-screen').style.display = 'none';
@@ -148,16 +147,14 @@ function handleAudioData(audioData) {
 }
 
 // Listen for connection changes
-ipcRenderer.on('connection-change', (_event, data) => {
-    const status = data?.status;
-    const details = data?.details || {};
-    const isConnected = status || details.connectedState === 'connected';
+window.api.onConnectionChange((status, details) => {
+    const isConnected = status || details?.connectedState === 'connected';
     console.log('Connection status changed:', status, 'details:', details);
     updateStatus(isConnected, details);
 });
 
 // Listen for audio data
-ipcRenderer.on('audio-stats', (_event, stats) => {
+window.api.onAudioStats((_fakeBuffer, _stats) => {
     // We only need to count updates for UI feedback
     audioChunksCount++;
     const chunksElement = document.getElementById('audioChunksReceived');
@@ -173,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateStatus(false, {});
     
     // Check initial connection status
-    ipcRenderer.invoke('get-connection-status')
+    window.api.getConnectionStatus()
         .then(({ status, details }) => {
             console.log('Initial connection status:', status, 'details:', details);
             updateStatus(status, details);
@@ -292,7 +289,7 @@ function hideTranscriptionError() {
 // Initialize transcription status
 async function updateTranscriptionCheckboxState() {
     try {
-        const status = await ipcRenderer.invoke('get-transcription-status');
+        const status = await window.api.getTranscriptionStatus();
         isTranscriptionActive = status.isActive || status.active;
         const toggleCheckbox = document.getElementById('toggleTranscription');
         if (toggleCheckbox) {

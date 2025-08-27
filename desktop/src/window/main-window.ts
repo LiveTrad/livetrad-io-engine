@@ -13,16 +13,17 @@ export class MainWindow {
             height: config.window.height,
             title: config.window.title,
             webPreferences: {
-                nodeIntegration: true,
-                contextIsolation: false,
-                webSecurity: false,
+                nodeIntegration: false,
+                contextIsolation: true,
+                webSecurity: true,
+                preload: path.join(__dirname, '../preload.js'),
                 // Désactiver les fonctionnalités problématiques
                 webgl: false,
                 webaudio: false,
                 // Optimisations de performance
                 backgroundThrottling: false,
                 // Désactiver la vérification de l'origine
-                allowRunningInsecureContent: true,
+                allowRunningInsecureContent: false,
                 // Configuration réseau
                 sandbox: false,
                 nodeIntegrationInWorker: false,
