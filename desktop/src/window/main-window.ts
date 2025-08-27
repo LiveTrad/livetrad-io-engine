@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { config } from '../config/env';
 
 export class MainWindow {
@@ -8,6 +9,11 @@ export class MainWindow {
     constructor() {}
 
     public create(): void {
+        // Resolve preload path for dev/prod
+        const distPreload = path.join(__dirname, '../preload.js');
+        const srcPreload = path.join(__dirname, '../../src/preload.js');
+        const preloadPath = fs.existsSync(distPreload) ? distPreload : srcPreload;
+
         this.window = new BrowserWindow({
             width: config.window.width,
             height: config.window.height,
@@ -16,7 +22,7 @@ export class MainWindow {
                 nodeIntegration: false,
                 contextIsolation: true,
                 webSecurity: true,
-                preload: path.join(__dirname, '../preload.js'),
+                preload: preloadPath,
                 // Désactiver les fonctionnalités problématiques
                 webgl: false,
                 webaudio: false,
