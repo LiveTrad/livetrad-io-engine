@@ -39,9 +39,6 @@ async function handleLogin() {
             // Réinitialiser les champs
             usernameInput.value = '';
             passwordInput.value = '';
-            
-            // Mettre à jour l'état de connexion
-            updateStatus('connected', { message: 'Connecté avec succès' });
         } else {
             showError('Identifiants incorrects');
             loginBtn.disabled = false;
