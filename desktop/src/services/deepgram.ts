@@ -58,7 +58,8 @@ export class DeepgramService extends EventEmitter {
             interim_results: true,
             encoding: 'linear16',
             channels: 1,
-            sample_rate: 16000,
+            // Match common WebRTC sample rate; Deepgram will resample if needed
+            sample_rate: 48000,
             endpointing: 300  // 300ms de silence pour finaliser
         };
 

@@ -234,16 +234,19 @@ class LiveTradApp {
             };
         });
 
-        // Deepgram transcription handlers
+        // Deepgram transcription handlers (apply to both WS and WebRTC paths)
         ipcMain.handle('toggle-transcription', () => {
-            if (!this.wsService) return { success: false, isActive: false };
-            this.wsService.toggleTranscription();
-            return { success: true, isActive: this.wsService.isTranscriptionActive() };
+            if (!this.wsService && !this.webrtcService) return { success: false, isActive: false };
+            if (this.wsService) this.wsService.toggleTranscription();
+            if (this.webrtcService) this.webrtcService.startTranscription(); // ensures WebRTC path forwards audio
+            const isActive = (this.wsService && this.wsService.isTranscriptionActive()) || false;
+            return { success: true, isActive };
         });
 
         ipcMain.handle('get-transcription-status', () => {
-            if (!this.wsService) return { isActive: false };
-            return this.wsService.getTranscriptionStatus();
+            if (!this.wsService && !this.webrtcService) return { isActive: false };
+            if (this.wsService) return this.wsService.getTranscriptionStatus();
+            return { active: false, connected: false, hasApiKey: false };
         });
 
         // Tous les écouteurs d'événements sont maintenant dans initializeServices()

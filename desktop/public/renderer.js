@@ -180,17 +180,18 @@ document.addEventListener('DOMContentLoaded', () => {
             updateStatus(false);
         });
 
-    // Transcription elements (simplified)
-    const toggleTranscriptionCheckbox = document.getElementById('toggleTranscriptionCheckbox');
-    
-    // Initialize transcription if elements exist
+    // Transcription elements
+    const toggleTranscriptionCheckbox = document.getElementById('toggleTranscription');
     if (toggleTranscriptionCheckbox) {
         toggleTranscriptionCheckbox.checked = isTranscriptionActive;
-        
-        toggleTranscriptionCheckbox.addEventListener('change', () => {
-            isTranscriptionActive = toggleTranscriptionCheckbox.checked;
-            console.log('Transcription toggled:', isTranscriptionActive);
-            // Add any additional transcription handling here
+        toggleTranscriptionCheckbox.addEventListener('change', async () => {
+            try {
+                const result = await window.api.toggleTranscription();
+                isTranscriptionActive = !!(result && (result.isActive || result.active));
+                updateTranscriptionStatus();
+            } catch (error) {
+                console.error('Error toggling transcription:', error);
+            }
         });
     }
 });
@@ -303,3 +304,13 @@ async function updateTranscriptionCheckboxState() {
 
 // Call on startup
 updateTranscriptionCheckboxState();
+
+// Subscribe to transcription events from main process via preload bridge
+window.api.onTranscription((transcriptionData) => {
+    try {
+        if (!transcriptionData) return;
+        addTranscriptionToDisplay(transcriptionData);
+    } catch (e) {
+        console.error('Error handling transcription event:', e);
+    }
+});
