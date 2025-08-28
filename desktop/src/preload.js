@@ -8,7 +8,7 @@ const ipc = {
         // From main to render
         'receive': ['connection-change', 'audio-stats', 'transcription', 'deepgram-connected', 'deepgram-disconnected', 'deepgram-error'],
         // From render to main and back again
-        'sendReceive': ['authenticate', 'check-auth', 'get-connection-status', 'toggle-playback', 'get-playback-status', 'set-volume', 'toggle-mute', 'get-volume', 'toggle-transcription', 'get-transcription-status']
+        'sendReceive': ['authenticate', 'check-auth', 'get-connection-status', 'toggle-playback', 'get-playback-status', 'set-volume', 'toggle-mute', 'get-volume', 'toggle-transcription', 'get-transcription-status', 'toggle-auto-translate', 'get-auto-translate-status', 'set-target-language', 'get-target-language']
     }
 };
 
@@ -55,6 +55,19 @@ contextBridge.exposeInMainWorld(
 
         setTranscriptionLanguage: (language, detectLanguage) =>
             ipcRenderer.invoke('set-transcription-language', { language, detectLanguage }),
+        
+        // Translation
+        toggleAutoTranslate: (enabled) =>
+            ipcRenderer.invoke('toggle-auto-translate', { enabled }),
+            
+        getAutoTranslateStatus: () =>
+            ipcRenderer.invoke('get-auto-translate-status'),
+            
+        setTargetLanguage: (language) =>
+            ipcRenderer.invoke('set-target-language', { language }),
+            
+        getTargetLanguage: () =>
+            ipcRenderer.invoke('get-target-language'),
         
         // Event listeners
         onConnectionChange: (callback) => 

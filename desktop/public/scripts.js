@@ -19,12 +19,15 @@ class LiveTradApp {
         this.isRealTimeTTS = true;
     }
     
-    init() {
+    async init() {
         this.setupEventListeners();
         this.updateStats();
         this.startSessionTimer();
         this.updateProfileVoiceVariants();
         this.simulatePeriodicTranscription();
+        
+        // Initialize translation states
+        await this.initializeTranslationStates();
     }
     
     setupEventListeners() {
@@ -378,11 +381,17 @@ class LiveTradApp {
         }
     }
     
-    toggleAutoTranslate(enabled) {
-        if (enabled) {
-            this.showNotification('Auto-translation enabled', 'success');
-        } else {
-            this.showNotification('Auto-translation disabled', 'info');
+    async toggleAutoTranslate(enabled) {
+        try {
+            await window.api.toggleAutoTranslate(enabled);
+            if (enabled) {
+                this.showNotification('Auto-translation enabled', 'success');
+            } else {
+                this.showNotification('Auto-translation disabled', 'info');
+            }
+        } catch (error) {
+            console.error('Error toggling auto-translate:', error);
+            this.showNotification('Error toggling auto-translate', 'error');
         }
     }
     
@@ -402,17 +411,23 @@ class LiveTradApp {
         window.api.setTranscriptionLanguage(detect ? undefined : lang, detect);
     }
     
-    selectTargetLanguage(lang) {
-        const targetOptions = document.querySelectorAll('.lang-option[data-target]');
-        if (targetOptions) {
-            targetOptions.forEach(btn => {
-                btn.classList.remove('active');
-            });
-            const selectedBtn = document.querySelector(`[data-target="${lang}"]`);
-            if (selectedBtn) selectedBtn.classList.add('active');
+    async selectTargetLanguage(lang) {
+        try {
+            await window.api.setTargetLanguage(lang);
+            const targetOptions = document.querySelectorAll('.lang-option[data-target]');
+            if (targetOptions) {
+                targetOptions.forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                const selectedBtn = document.querySelector(`[data-target="${lang}"]`);
+                if (selectedBtn) selectedBtn.classList.add('active');
+            }
+            this.currentTargetLang = lang;
+            this.showNotification(`Target language: ${lang}`, 'info');
+        } catch (error) {
+            console.error('Error setting target language:', error);
+            this.showNotification('Error setting target language', 'error');
         }
-        this.currentTargetLang = lang;
-        this.showNotification(`Target language: ${lang}`, 'info');
     }
     
     exportTranscriptions() {
@@ -467,6 +482,32 @@ class LiveTradApp {
             this.stats.transcriptCount = 0;
             this.updateStats();
             this.showNotification('All transcriptions cleared', 'info');
+        }
+    }
+    
+    async initializeTranslationStates() {
+        try {
+            // Get current auto-translate status
+            const autoTranslateStatus = await window.api.getAutoTranslateStatus();
+            const autoTranslateCheckbox = document.getElementById('autoTranslate');
+            if (autoTranslateCheckbox) {
+                autoTranslateCheckbox.checked = autoTranslateStatus.enabled;
+            }
+            
+            // Get current target language
+            const targetLanguageStatus = await window.api.getTargetLanguage();
+            this.currentTargetLang = targetLanguageStatus.language;
+            
+            // Update UI to reflect current target language
+            const targetOptions = document.querySelectorAll('.lang-option[data-target]');
+            targetOptions.forEach(btn => {
+                btn.classList.remove('active');
+            });
+            const selectedBtn = document.querySelector(`[data-target="${this.currentTargetLang}"]`);
+            if (selectedBtn) selectedBtn.classList.add('active');
+            
+        } catch (error) {
+            console.error('Error initializing translation states:', error);
         }
     }
     
@@ -612,7 +653,7 @@ class LiveTradApp {
 }
 
 let app;
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     app = new LiveTradApp();
-    app.init();
+    await app.init();
 });

@@ -10,6 +10,7 @@ export interface TranscriptionData {
     confidence: number;
     isFinal: boolean;
     timestamp: Date | string | number;
+    language?: string;
 }
 
 export abstract class TranscriptionProvider extends EventEmitter {

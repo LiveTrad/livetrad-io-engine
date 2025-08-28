@@ -65,5 +65,10 @@ export const config = {
         model: getEnvVar('DEEPGRAM_MODEL', 'nova'),
         transcriptionPort: getEnvNumber('DEEPGRAM_TRANSCRIPTION_PORT', 3000)
     },
+    translation: {
+        googleApiKey: getEnvVar('GOOGLE_TRANSLATE_API_KEY', ''),
+        deeplApiKey: getEnvVar('DEEPL_API_KEY', ''),
+        defaultProvider: getEnvVar('TRANSLATION_PROVIDER', 'google')
+    },
     isDevelopment: getEnvVar('NODE_ENV', 'production') === 'development'
 };

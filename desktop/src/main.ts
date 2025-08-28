@@ -256,6 +256,31 @@ class LiveTradApp {
             return { success: true };
         });
 
+        // Translation handlers
+        ipcMain.handle('toggle-auto-translate', (_evt, { enabled }) => {
+            if (this.wsService) this.wsService.setAutoTranslate(enabled);
+            if (this.webrtcService) this.webrtcService.setAutoTranslate(enabled);
+            return { success: true, enabled };
+        });
+
+        ipcMain.handle('get-auto-translate-status', () => {
+            if (this.wsService) return { enabled: this.wsService.isAutoTranslateEnabled() };
+            if (this.webrtcService) return { enabled: this.webrtcService.isAutoTranslateEnabled() };
+            return { enabled: false };
+        });
+
+        ipcMain.handle('set-target-language', (_evt, { language }) => {
+            if (this.wsService) this.wsService.setTargetLanguage(language);
+            if (this.webrtcService) this.webrtcService.setTargetLanguage(language);
+            return { success: true };
+        });
+
+        ipcMain.handle('get-target-language', () => {
+            if (this.wsService) return { language: this.wsService.getTargetLanguage() };
+            if (this.webrtcService) return { language: this.webrtcService.getTargetLanguage() };
+            return { language: 'fr' };
+        });
+
         // Tous les écouteurs d'événements sont maintenant dans initializeServices()
         // pour s'assurer qu'ils ne sont configurés qu'après l'initialisation des services
     }

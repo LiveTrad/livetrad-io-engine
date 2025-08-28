@@ -27,7 +27,11 @@ export class WebSocketService extends EventEmitter {
 
     constructor() {
         super();
-        this.transcriptor = new LiveTradTranscriptor(new DeepgramProvider());
+        // Créer le service de traduction avec le provider par défaut
+        const { TranslationService } = require('./translation');
+        const translationService = new TranslationService(config.translation?.defaultProvider || 'google');
+        
+        this.transcriptor = new LiveTradTranscriptor(new DeepgramProvider(), translationService);
         this.setupTranscriptionListeners();
     }
 
@@ -660,5 +664,22 @@ export class WebSocketService extends EventEmitter {
 
     public onDeepgramError(callback: (error: any) => void): void {
         this.on('deepgram-error', callback);
+    }
+
+    // Translation methods
+    public setAutoTranslate(enabled: boolean): void {
+        this.transcriptor.setAutoTranslate(enabled);
+    }
+
+    public isAutoTranslateEnabled(): boolean {
+        return this.transcriptor.isAutoTranslateEnabled();
+    }
+
+    public setTargetLanguage(language: string): void {
+        this.transcriptor.setTargetLanguage(language);
+    }
+
+    public getTargetLanguage(): string {
+        return this.transcriptor.getTargetLanguage();
     }
 }

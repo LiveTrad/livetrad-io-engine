@@ -211,33 +211,71 @@ function updateTranscriptionStatus() {
 function addTranscriptionToDisplay(transcriptionData) {
     const currentTranscription = document.getElementById('currentTranscription');
     const completedTranscriptions = document.getElementById('completedTranscriptions');
+    const autoTranslateCheckbox = document.getElementById('autoTranslate');
+    const isAutoTranslateEnabled = autoTranslateCheckbox ? autoTranslateCheckbox.checked : false;
     
-    if (transcriptionData.isFinal) {
+    // Handle both old format (direct transcription) and new format (with translation)
+    let transcription = transcriptionData;
+    let translation = null;
+    
+    if (transcriptionData.transcription) {
+        // New format with translation
+        transcription = transcriptionData.transcription;
+        translation = transcriptionData.translation;
+    }
+    
+    if (transcription.isFinal) {
         // Transcription finale - ajouter à l'historique
         const completedItem = document.createElement('div');
         completedItem.className = 'completed-transcript';
         
+        // Original transcription text
         const transcriptText = document.createElement('span');
-        transcriptText.textContent = transcriptionData.transcript;
+        transcriptText.textContent = transcription.transcript;
         
         const confidenceText = document.createElement('span');
         confidenceText.className = 'transcript-confidence';
-        confidenceText.textContent = ` (${(transcriptionData.confidence * 100).toFixed(1)}%)`;
+        confidenceText.textContent = ` (${(transcription.confidence * 100).toFixed(1)}%)`;
         
         const languageBadge = document.createElement('span');
         languageBadge.className = 'language-indicator';
-        languageBadge.textContent = detectedLanguage;
+        languageBadge.textContent = transcription.language || detectedLanguage;
         
         const timestamp = document.createElement('div');
         timestamp.style.fontSize = '0.8em';
         timestamp.style.color = '#999';
         timestamp.style.marginTop = '2px';
-        timestamp.textContent = transcriptionData.timestamp.toLocaleTimeString();
+        timestamp.textContent = transcription.timestamp.toLocaleTimeString();
         
         completedItem.appendChild(transcriptText);
         completedItem.appendChild(confidenceText);
         completedItem.appendChild(languageBadge);
         completedItem.appendChild(timestamp);
+        
+        // Add translation if available and auto-translate is enabled
+        if (translation && isAutoTranslateEnabled) {
+            const translationDiv = document.createElement('div');
+            translationDiv.className = 'translation-text';
+            translationDiv.style.marginTop = '4px';
+            translationDiv.style.padding = '4px 8px';
+            translationDiv.style.backgroundColor = 'rgba(0, 255, 136, 0.1)';
+            translationDiv.style.borderLeft = '3px solid #00ff88';
+            translationDiv.style.borderRadius = '4px';
+            translationDiv.style.fontStyle = 'italic';
+            translationDiv.style.color = '#00ff88';
+            
+            const translationLabel = document.createElement('span');
+            translationLabel.textContent = 'TRANSLATED: ';
+            translationLabel.style.fontWeight = 'bold';
+            translationLabel.style.fontSize = '0.8em';
+            
+            const translationContent = document.createElement('span');
+            translationContent.textContent = translation.translatedText;
+            
+            translationDiv.appendChild(translationLabel);
+            translationDiv.appendChild(translationContent);
+            completedItem.appendChild(translationDiv);
+        }
         
         completedTranscriptions.appendChild(completedItem);
         
@@ -250,12 +288,31 @@ function addTranscriptionToDisplay(transcriptionData) {
         
     } else {
         // Transcription intermédiaire - mettre à jour la ligne courante
-        currentInterimText = transcriptionData.transcript;
-        currentTranscription.innerHTML = `
-            <span>${transcriptionData.transcript}</span>
-            <span class="transcript-confidence">(${(transcriptionData.confidence * 100).toFixed(1)}%)</span>
-            <span class="language-indicator">${detectedLanguage}</span>
+        currentInterimText = transcription.transcript;
+        let displayText = `
+            <span>${transcription.transcript}</span>
+            <span class="transcript-confidence">(${(transcription.confidence * 100).toFixed(1)}%)</span>
+            <span class="language-indicator">${transcription.language || detectedLanguage}</span>
         `;
+        
+        // Add translation for interim text if available and auto-translate is enabled
+        if (translation && isAutoTranslateEnabled) {
+            const isInterim = translation.isInterim;
+            const translationStyle = isInterim ? 
+                'background-color: rgba(255, 193, 7, 0.1); border-left: 3px solid #ffc107; color: #ffc107;' :
+                'background-color: rgba(0, 255, 136, 0.1); border-left: 3px solid #00ff88; color: #00ff88;';
+            
+            const translationLabel = isInterim ? 'TRANSLATING...' : 'TRANSLATED:';
+            
+            displayText += `
+                <div style="margin-top: 4px; padding: 4px 8px; ${translationStyle} border-radius: 4px; font-style: italic;">
+                    <span style="font-weight: bold; font-size: 0.8em;">${translationLabel} </span>
+                    <span>${translation.translatedText}</span>
+                </div>
+            `;
+        }
+        
+        currentTranscription.innerHTML = displayText;
     }
 }
 
