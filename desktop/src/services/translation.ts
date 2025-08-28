@@ -2,7 +2,6 @@ import { EventEmitter } from 'events';
 import { config } from '../config/env';
 import { TranslationProvider, GoogleTranslateProvider } from './translation-providers/google-translate';
 import { DeepLTranslateProvider } from './translation-providers/deepl-translate';
-import { ArgosTranslateProvider } from './translation-providers/argos-translate';
 
 export interface TranslationData {
     originalText: string;
@@ -42,8 +41,6 @@ export class TranslationService extends EventEmitter {
         switch (type.toLowerCase()) {
             case 'deepl':
                 return new DeepLTranslateProvider(config.translation?.deeplApiKey);
-            case 'argos':
-                return new ArgosTranslateProvider(config.translation?.pythonPath || 'python3');
             case 'google':
             default:
                 return new GoogleTranslateProvider(config.translation?.googleApiKey);
