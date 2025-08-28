@@ -15,25 +15,23 @@ export class DeepLTranslateProvider implements TranslationProvider {
         console.log('[DeepL] Translator initialized');
     }
 
-    async translate(text: string, sourceLang: string, targetLang: string): Promise<string> {
-        if (!text || !sourceLang || !targetLang) {
-            throw new Error('Missing required parameters for translation');
-        }
+    async translate(text: string, _sourceLang: string, targetLang: string): Promise<string> {
+        if (!text) throw new Error('Text to translate is required');
+        if (!targetLang) throw new Error('Target language is required');
 
         try {
-            // Convert language codes for DeepL
+            // Convertir le code de langue cible
             const targetLangCode = this.convertToDeepLLanguageCode(targetLang);
-            const sourceLangCode = sourceLang !== 'auto' ? this.convertToDeepLLanguageCode(sourceLang) : null;
-            
             if (!targetLangCode) {
-                throw new Error('Invalid target language');
+                throw new Error(`Unsupported target language: ${targetLang}`);
             }
             
-            console.log(`[DeepL] Translating from ${sourceLangCode || 'auto'} to ${targetLangCode}`);
+            console.log(`[DeepL] Translating to ${targetLangCode} (auto-detect source)`);
             
+            // Utiliser la détection automatique de la langue source
             const result = await this.translator.translateText(
                 text,
-                sourceLangCode as deepl.SourceLanguageCode | null,
+                null, // Détection automatique de la langue source
                 targetLangCode as deepl.TargetLanguageCode,
                 {
                     preserveFormatting: true,
@@ -44,7 +42,8 @@ export class DeepLTranslateProvider implements TranslationProvider {
                 }
             );
 
-            console.log(`[DeepL] Translation successful (detected: ${result.detectedSourceLang || 'unknown'})`);
+            const sourceLang = result.detectedSourceLang || 'unknown';
+            console.log(`[DeepL] Translated from ${sourceLang} to ${targetLangCode}`);
             return result.text;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
