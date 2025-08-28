@@ -3,49 +3,27 @@ import * as deepl from 'deepl-node';
 
 export class DeepLTranslateProvider implements TranslationProvider {
     public readonly name = 'deepl';
-    private translator: deepl.Translator | null = null;
-    private apiKey?: string;
-    
-    // Simple fallback translations for common phrases
-    private fallbackTranslations: Record<string, Record<string, string>> = {
-        'fr': {
-            'hello': 'bonjour',
-            'goodbye': 'au revoir',
-            'thank you': 'merci',
-            'how are you': 'comment allez-vous',
-            'good evening': 'bonsoir'
-        },
-        'en': {
-            'bonjour': 'hello',
-            'au revoir': 'goodbye',
-            'merci': 'thank you',
-            'comment allez-vous': 'how are you',
-            'bonsoir': 'good evening'
-        }
-    };
+    private translator: deepl.Translator;
+    private apiKey: string;
 
-    constructor(apiKey?: string) {
-        this.apiKey = apiKey;
-        if (apiKey) {
-            try {
-                this.translator = new deepl.Translator(apiKey);
-                console.log('[DeepL] Translator initialized');
-            } catch (error) {
-                console.error('[DeepL] Failed to initialize translator:', error);
-            }
+    constructor(apiKey: string = 'a54f1530-887d-4466-bfec-c32e1621fafe:fx') {
+        if (!apiKey) {
+            throw new Error('DeepL API key is required');
         }
+        this.apiKey = apiKey;
+        this.translator = new deepl.Translator(this.apiKey);
+        console.log('[DeepL] Translator initialized');
     }
 
     async translate(text: string, sourceLang: string, targetLang: string): Promise<string> {
-        if (!this.translator) {
-            console.warn('[DeepL] No valid API key provided, using fallback');
-            return this.fallbackTranslate(text, sourceLang, targetLang);
+        if (!text || !sourceLang || !targetLang) {
+            throw new Error('Missing required parameters for translation');
         }
 
         try {
             // Convert language codes for DeepL
-            const targetLangCode = this.convertLanguageCode(targetLang);
-            const sourceLangCode = sourceLang ? this.convertLanguageCode(sourceLang) : null;
+            const targetLangCode = this.convertToDeepLLanguageCode(targetLang);
+            const sourceLangCode = sourceLang !== 'auto' ? this.convertToDeepLLanguageCode(sourceLang) : null;
             
             if (!targetLangCode) {
                 throw new Error('Invalid target language');
@@ -69,14 +47,16 @@ export class DeepLTranslateProvider implements TranslationProvider {
             console.log(`[DeepL] Translation successful (detected: ${result.detectedSourceLang || 'unknown'})`);
             return result.text;
         } catch (error) {
-            console.error('[DeepL] Translation error:', error);
-            return this.fallbackTranslate(text, sourceLang, targetLang);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            console.error('[DeepL] Translation error:', errorMessage);
+            throw new Error(`Translation failed: ${errorMessage}`);
         }
     }
 
-    private convertLanguageCode(lang: string): string {
+    private convertToDeepLLanguageCode(lang: string): string {
         // Map standard language codes to DeepL's format
-        const langMap: { [key: string]: string } = {
+        const langMap: Record<string, deepl.TargetLanguageCode> = {
+            // Target languages (can be used as both source and target)
             'en': 'en-US',
             'fr': 'fr',
             'es': 'es',
@@ -108,36 +88,13 @@ export class DeepLTranslateProvider implements TranslationProvider {
         };
 
         const normalizedLang = lang.toLowerCase();
-        if (normalizedLang === 'auto') return ''; // Empty string for auto-detection
-        return langMap[normalizedLang] || 'en-US';
-    }
-
-    private async fallbackTranslate(text: string, sourceLang: string, targetLang: string): Promise<string> {
-        console.warn(`[DeepL] Using fallback translation (${sourceLang} -> ${targetLang})`);
+        const languageCode = langMap[normalizedLang];
         
-        // Try to find a fallback translation
-        const sourceLangCode = sourceLang.split('-')[0];
-        const targetLangCode = targetLang.split('-')[0];
-        
-        // Check for direct match in source language
-        if (this.fallbackTranslations[sourceLangCode]?.[text.toLowerCase()]) {
-            return this.fallbackTranslations[sourceLangCode][text.toLowerCase()];
+        if (!languageCode) {
+            console.warn(`[DeepL] Unsupported language code: ${lang}, defaulting to English`);
+            return 'en-US';
         }
         
-        // If no direct translation found, try to find a reverse translation
-        if (this.fallbackTranslations[targetLangCode]) {
-            const reverseMap = Object.entries(this.fallbackTranslations[targetLangCode])
-                .reduce((acc, [key, value]) => {
-                    acc[value] = key;
-                    return acc;
-                }, {} as Record<string, string>);
-                
-            if (reverseMap[text.toLowerCase()]) {
-                return reverseMap[text.toLowerCase()];
-            }
-        }
-        
-        // If no translation found, return the original text
-        return text;
+        return languageCode;
     }
 }
