@@ -147,10 +147,10 @@ function handleAudioData(audioData) {
 }
 
 // Listen for connection changes
-window.api.onConnectionChange((status, details) => {
-    const isConnected = status || details?.connectedState === 'connected';
-    console.log('Connection status changed:', status, 'details:', details);
-    updateStatus(isConnected, details);
+window.api.onConnectionChange((data) => {
+    // const isConnected = status === "connected" || details?.connectedState === 'connected';
+    console.log('Connection status changed:', data.status, 'details:', data.details);
+    updateStatus(data.status , data.details);
 });
 
 // Listen for audio data
@@ -166,8 +166,8 @@ window.api.onAudioStats((_fakeBuffer, _stats) => {
 // Initialize on DOM content loaded
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Application initialized');
-
-    updateStatus(false, {});
+    const defaultStatus = "disconnected";
+    updateStatus(defaultStatus, {});
     
     // Check initial connection status
     window.api.getConnectionStatus()
@@ -177,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .catch(error => {
             console.error('Error getting connection status:', error);
-            updateStatus(false);
+            updateStatus(defaultStatus, {});
         });
 
     // Transcription elements

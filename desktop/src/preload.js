@@ -72,6 +72,9 @@ contextBridge.exposeInMainWorld(
         // Event listeners
         onConnectionChange: (callback) => 
             ipcRenderer.on('connection-change', (event, ...args) => callback(...args)),
+            
+        onWebRTCConnectionChange: (callback) =>
+            ipcRenderer.on('webrtc-connection-change', (event, ...args) => callback(...args)),
         
         onAudioStats: (callback) => 
             ipcRenderer.on('audio-stats', (event, ...args) => callback(...args)),
