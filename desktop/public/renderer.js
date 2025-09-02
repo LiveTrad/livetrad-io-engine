@@ -212,6 +212,7 @@ function addTranscriptionToDisplay(transcriptionData) {
     const currentTranscription = document.getElementById('currentTranscription');
     const completedTranscriptions = document.getElementById('completedTranscriptions');
     const autoTranslateCheckbox = document.getElementById('autoTranslate');
+    // Ensure we always have a boolean value, defaulting to false if checkbox doesn't exist
     const isAutoTranslateEnabled = autoTranslateCheckbox ? autoTranslateCheckbox.checked : false;
     
     // Handle both old format (direct transcription) and new format (with translation)
@@ -253,7 +254,8 @@ function addTranscriptionToDisplay(transcriptionData) {
         completedItem.appendChild(timestamp);
         
         // Add translation if available and auto-translate is enabled
-        if (translation && isAutoTranslateEnabled) {
+        const shouldShowTranslation = translation && (isAutoTranslateEnabled || translation.isInterim);
+        if (shouldShowTranslation) {
             const translationDiv = document.createElement('div');
             translationDiv.className = 'translation-text';
             translationDiv.style.marginTop = '4px';
@@ -296,7 +298,8 @@ function addTranscriptionToDisplay(transcriptionData) {
         `;
         
         // Add translation for interim text if available and auto-translate is enabled
-        if (translation && isAutoTranslateEnabled) {
+        const shouldShowTranslation = translation && (isAutoTranslateEnabled || translation.isInterim);
+        if (shouldShowTranslation) {
             const isInterim = translation.isInterim;
             const translationStyle = isInterim ? 
                 'background-color: rgba(255, 193, 7, 0.1); border-left: 3px solid #ffc107; color: #ffc107;' :
