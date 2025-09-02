@@ -15,6 +15,8 @@ export class LiveTradTranscriptor extends EventEmitter {
     private lastFinalTranscript: string = '';
     private translationBuffer: string = '';
     private lastTranslation: string = '';
+    private lastProcessedText: string = '';
+    private lastProcessedTranslation: string = '';
 
     constructor(provider: TranscriptionProvider, translationService?: TranslationService) {
         super();
@@ -29,11 +31,22 @@ export class LiveTradTranscriptor extends EventEmitter {
             // Si la traduction est activée et que c'est une transcription finale ou partielle
             if (this.autoTranslate && this.translationService.isTranslationEnabled() && data.transcript) {
                 try {
-                    // Pour les segments finaux, on traduit tout le texte depuis le début
-                    // Pour les segments intermédiaires, on traduit seulement le nouveau texte
-                    const textToTranslate = data.isFinal 
-                        ? data.transcript 
-                        : this.lastFinalTranscript + ' ' + data.transcript;
+                    // Pour éviter les répétitions, on ne traduit que la partie du texte qui n'a pas encore été traitée
+                    let textToTranslate = data.transcript;
+                    
+                    if (data.isFinal) {
+                        // Pour les segments finaux, on prend tout le texte depuis le début
+                        // mais on enlève la partie déjà traduite précédemment
+                        if (this.lastProcessedText && data.transcript.startsWith(this.lastProcessedText)) {
+                            textToTranslate = data.transcript.substring(this.lastProcessedText.length).trim();
+                        }
+                        this.lastProcessedText = data.transcript;
+                    } else {
+                        // Pour les segments intermédiaires, on ajoute seulement le nouveau texte
+                        if (this.lastFinalTranscript && data.transcript.startsWith(this.lastFinalTranscript)) {
+                            textToTranslate = data.transcript.substring(this.lastFinalTranscript.length).trim();
+                        }
+                    }
                     
                     if (textToTranslate.trim()) {
                         const streamingSegment: StreamingTranslationSegment = {
@@ -56,11 +69,17 @@ export class LiveTradTranscriptor extends EventEmitter {
                                 this.translationBuffer = '';
                             }
                             
+                            // On combine la nouvelle traduction avec la précédente si nécessaire
+                            let finalTranslation = translation.translatedText;
+                            if (data.isFinal && this.lastProcessedTranslation) {
+                                // Pour les segments finaux, on ajoute la nouvelle traduction à la fin
+                                finalTranslation = this.lastProcessedTranslation + ' ' + finalTranslation;
+                                this.lastProcessedTranslation = finalTranslation;
+                            }
+                            
                             result.translation = {
                                 ...translation,
-                                translatedText: data.isFinal 
-                                    ? this.lastTranslation 
-                                    : this.translationBuffer
+                                translatedText: finalTranslation
                             };
                         }
                     }

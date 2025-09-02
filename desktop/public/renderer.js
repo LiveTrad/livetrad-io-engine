@@ -255,16 +255,24 @@ function addTranscriptionToDisplay(transcriptionData) {
         
                 // Afficher uniquement la traduction de la phrase actuelle
         if (translation && isAutoTranslateEnabled && translation.translatedText) {
-            // Extraire uniquement la partie de la traduction qui correspond à la transcription actuelle
+            // Pour éviter les répétitions, on ne prend que la dernière partie de la traduction
+            // qui correspond à la dernière phrase complète
             let displayTranslation = translation.translatedText;
             
-            // Si la traduction contient plus de texte que la transcription actuelle,
-            // on prend seulement la fin qui correspond à la dernière phrase
-            if (translation.translatedText.length > transcription.transcript.length) {
-                // Trouver la position où commence la dernière phrase dans la traduction
-                const lastSentenceStart = translation.translatedText.lastIndexOf('. ');
-                if (lastSentenceStart > 0) {
-                    displayTranslation = translation.translatedText.substring(lastSentenceStart + 1).trim();
+            // Trouver la dernière phrase complète (séparée par un point)
+            const sentences = displayTranslation.split('.');
+            if (sentences.length > 1) {
+                // Prendre uniquement la dernière phrase non vide
+                for (let i = sentences.length - 1; i >= 0; i--) {
+                    const sentence = sentences[i].trim();
+                    if (sentence.length > 0) {
+                        displayTranslation = sentence;
+                        // Ajouter un point si ce n'est pas une phrase interrogative ou exclamative
+                        if (!['?', '!'].includes(displayTranslation.slice(-1))) {
+                            displayTranslation += '.';
+                        }
+                        break;
+                    }
                 }
             }
             const translationDiv = document.createElement('div');
@@ -311,16 +319,23 @@ function addTranscriptionToDisplay(transcriptionData) {
         
         // Afficher uniquement la traduction de la phrase actuelle pour le texte intermédiaire
         if (translation && isAutoTranslateEnabled && translation.translatedText) {
-            // Extraire uniquement la partie de la traduction qui correspond à la transcription actuelle
+            // Pour le texte intermédiaire, on prend uniquement la dernière phrase complète
             let displayTranslation = translation.translatedText;
             
-            // Si la traduction contient plus de texte que la transcription actuelle,
-            // on prend seulement la fin qui correspond à la dernière phrase
-            if (translation.translatedText.length > transcription.transcript.length) {
-                // Trouver la position où commence la dernière phrase dans la traduction
-                const lastSentenceStart = translation.translatedText.lastIndexOf('. ');
-                if (lastSentenceStart > 0) {
-                    displayTranslation = translation.translatedText.substring(lastSentenceStart + 1).trim();
+            // Trouver la dernière phrase complète (séparée par un point)
+            const sentences = displayTranslation.split('.');
+            if (sentences.length > 1) {
+                // Prendre uniquement la dernière phrase non vide
+                for (let i = sentences.length - 1; i >= 0; i--) {
+                    const sentence = sentences[i].trim();
+                    if (sentence.length > 0) {
+                        displayTranslation = sentence;
+                        // Ajouter un point si ce n'est pas une phrase interrogative ou exclamative
+                        if (!['?', '!', '...'].includes(displayTranslation.slice(-1))) {
+                            displayTranslation += '.';
+                        }
+                        break;
+                    }
                 }
             }
             const isInterim = !transcription.isFinal;
