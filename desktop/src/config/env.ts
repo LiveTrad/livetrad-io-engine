@@ -68,7 +68,7 @@ export const config = {
     translation: {
         googleApiKey: getEnvVar('GOOGLE_TRANSLATE_API_KEY', ''),
         deeplApiKey: getEnvVar('DEEPL_API_KEY', ''),
-        defaultProvider: getEnvVar('TRANSLATION_PROVIDER', 'google')
+        defaultProvider: getEnvVar('TRANSLATION_PROVIDER', 'deepl')
     },
     isDevelopment: getEnvVar('NODE_ENV', 'production') === 'development'
 };

@@ -365,6 +365,20 @@ async function updateTranscriptionCheckboxState() {
 // Call on startup
 updateTranscriptionCheckboxState();
 
+// Set up auto-translate checkbox event listener
+const autoTranslateCheckbox = document.getElementById('autoTranslate');
+if (autoTranslateCheckbox) {
+    autoTranslateCheckbox.addEventListener('change', async (event) => {
+        const isEnabled = event.target.checked;
+        try {
+            await window.api.toggleAutoTranslate(isEnabled);
+            console.log(`Auto-translate ${isEnabled ? 'enabled' : 'disabled'}`);
+        } catch (error) {
+            console.error('Error toggling auto-translate:', error);
+        }
+    });
+}
+
 // Subscribe to transcription events from main process via preload bridge
 window.api.onTranscription((transcriptionData) => {
     if (!isTranscriptionActive) return; // ignore when disabled
