@@ -12,6 +12,9 @@ export class LiveTradTranscriptor extends EventEmitter {
     private translationService: TranslationService;
     private enabled: boolean = false;
     private autoTranslate: boolean = false;
+    private lastFinalTranscript: string = '';
+    private translationBuffer: string = '';
+    private lastTranslation: string = '';
 
     constructor(provider: TranscriptionProvider, translationService?: TranslationService) {
         super();
@@ -20,32 +23,59 @@ export class LiveTradTranscriptor extends EventEmitter {
 
         // Re-emit provider events to consumers
         this.provider.on('transcript', async (data: TranscriptionData) => {
-            if (this.autoTranslate && this.translationService.isTranslationEnabled()) {
+            // Toujours émettre la transcription originale
+            const result: TranscriptionWithTranslation = { transcription: data };
+            
+            // Si la traduction est activée et que c'est une transcription finale ou partielle
+            if (this.autoTranslate && this.translationService.isTranslationEnabled() && data.transcript) {
                 try {
-                    // Utiliser le streaming translation comme Vapi
-                    const streamingSegment: StreamingTranslationSegment = {
-                        text: data.transcript,
-                        isFinal: data.isFinal,
-                        confidence: data.confidence,
-                        language: data.language
-                    };
+                    // Pour les segments finaux, on traduit tout le texte depuis le début
+                    // Pour les segments intermédiaires, on traduit seulement le nouveau texte
+                    const textToTranslate = data.isFinal 
+                        ? data.transcript 
+                        : this.lastFinalTranscript + ' ' + data.transcript;
+                    
+                    if (textToTranslate.trim()) {
+                        const streamingSegment: StreamingTranslationSegment = {
+                            text: textToTranslate,
+                            isFinal: data.isFinal,
+                            confidence: data.confidence,
+                            language: data.language
+                        };
 
-                    const translation = await this.translationService.translateStreamingSegment(streamingSegment);
-                    
-                    const transcriptionWithTranslation: TranscriptionWithTranslation = {
-                        transcription: data,
-                        translation: translation || undefined
-                    };
-                    
-                    this.emit('transcription', transcriptionWithTranslation);
+                        const translation = await this.translationService.translateStreamingSegment(streamingSegment);
+                        
+                        if (translation) {
+                            // Mettre à jour le buffer de traduction
+                            this.translationBuffer = translation.translatedText;
+                            
+                            // Si c'est final, on met à jour la dernière traduction complète
+                            if (data.isFinal) {
+                                this.lastTranslation = this.translationBuffer;
+                                this.lastFinalTranscript = data.transcript;
+                                this.translationBuffer = '';
+                            }
+                            
+                            result.translation = {
+                                ...translation,
+                                translatedText: data.isFinal 
+                                    ? this.lastTranslation 
+                                    : this.translationBuffer
+                            };
+                        }
+                    }
                 } catch (error) {
                     console.error('[Transcriptor] Translation error:', error);
-                    // Emit original transcription if translation fails
-                    this.emit('transcription', { transcription: data });
+                    // En cas d'erreur, on continue avec la transcription seule
                 }
-            } else {
-                // Emit original transcription without translation
-                this.emit('transcription', { transcription: data });
+            }
+            
+            // Émettre le résultat (avec ou sans traduction)
+            this.emit('transcription', result);
+            
+            // Mettre à jour le dernier transcript final si nécessaire
+            if (data.isFinal) {
+                this.lastFinalTranscript = data.transcript;
             }
         });
         

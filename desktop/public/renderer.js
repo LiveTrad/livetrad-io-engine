@@ -253,9 +253,12 @@ function addTranscriptionToDisplay(transcriptionData) {
         completedItem.appendChild(languageBadge);
         completedItem.appendChild(timestamp);
         
-        // Add translation if available and auto-translate is enabled
-        const shouldShowTranslation = translation && (isAutoTranslateEnabled || translation.isInterim);
-        if (shouldShowTranslation) {
+                // Afficher la traduction si disponible et si la traduction automatique est activée
+        if (translation && isAutoTranslateEnabled) {
+            // Ne pas afficher de traduction vide ou identique à la précédente
+            if (!translation.translatedText || translation.translatedText === currentTranscription.textContent) {
+                return;
+            }
             const translationDiv = document.createElement('div');
             translationDiv.className = 'translation-text';
             translationDiv.style.marginTop = '4px';
@@ -297,15 +300,18 @@ function addTranscriptionToDisplay(transcriptionData) {
             <span class="language-indicator">${transcription.language || detectedLanguage}</span>
         `;
         
-        // Add translation for interim text if available and auto-translate is enabled
-        const shouldShowTranslation = translation && (isAutoTranslateEnabled || translation.isInterim);
-        if (shouldShowTranslation) {
-            const isInterim = translation.isInterim;
+        // Afficher la traduction pour le texte intermédiaire si disponible
+        if (translation && isAutoTranslateEnabled) {
+            // Ne pas afficher de traduction vide ou identique à la précédente
+            if (!translation.translatedText || translation.translatedText === currentTranscription.textContent) {
+                return;
+            }
+            const isInterim = !transcription.isFinal;
             const translationStyle = isInterim ? 
                 'background-color: rgba(255, 193, 7, 0.1); border-left: 3px solid #ffc107; color: #ffc107;' :
                 'background-color: rgba(0, 255, 136, 0.1); border-left: 3px solid #00ff88; color: #00ff88;';
             
-            const translationLabel = isInterim ? 'TRANSLATING...' : 'TRANSLATED:';
+            const translationLabel = isInterim ? 'TRADUCTION EN COURS...' : 'TRADUIT:';
             
             displayText += `
                 <div style="margin-top: 4px; padding: 4px 8px; ${translationStyle} border-radius: 4px; font-style: italic;">
