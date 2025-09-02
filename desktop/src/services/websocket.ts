@@ -3,7 +3,9 @@ import { EventEmitter } from 'events';
 import { config } from '../config/env';
 import { createWriteStream } from 'fs';
 import { spawn } from 'child_process';
-import { DeepgramService, TranscriptionData } from './deepgram';
+import { TranscriptionData } from './deepgram';
+import { LiveTradTranscriptor } from './transcription/transcriptor';
+import { DeepgramProvider } from './transcription/providers/deepgram-provider';
 
 export class WebSocketService extends EventEmitter {
     private wss: WebSocketServer | null = null;
@@ -14,7 +16,7 @@ export class WebSocketService extends EventEmitter {
     public currentVolume: number = 0.8; // Volume par défaut (80%)
     public isMuted: boolean = false;
     private _isPlaybackActive: boolean = false;
-    private deepgramService: DeepgramService;
+    private transcriptor: LiveTradTranscriptor;
     private transcriptionEnabled: boolean = false;
     
     // Buffer audio pour lisser le flux et éviter les saccades
@@ -25,8 +27,12 @@ export class WebSocketService extends EventEmitter {
 
     constructor() {
         super();
-        this.deepgramService = new DeepgramService();
-        this.setupDeepgramListeners();
+        // Créer le service de traduction avec le provider par défaut
+        const { TranslationService } = require('./translation');
+        const translationService = new TranslationService(config.translation?.defaultProvider || 'google');
+        
+        this.transcriptor = new LiveTradTranscriptor(new DeepgramProvider(), translationService);
+        this.setupTranscriptionListeners();
     }
 
     public init(): void {
@@ -137,8 +143,8 @@ export class WebSocketService extends EventEmitter {
 
                         // Si la transcription est activée, envoyer les données audio à Deepgram
                         if (this.transcriptionEnabled) {
-                            console.log('[WebSocket] Transcription ENABLED - sending audio chunk to Deepgram, size:', audioBuffer.length);
-                            this.deepgramService.sendAudioData(audioBuffer);
+                            console.log('[WebSocket] Transcription ENABLED - sending audio chunk to transcriptor, size:', audioBuffer.length);
+                            this.transcriptor.sendAudioData(audioBuffer);
                         } else {
                             // Log moins fréquent pour éviter le spam
                             if (Math.random() < 0.01) { // 1% des chunks
@@ -573,24 +579,24 @@ export class WebSocketService extends EventEmitter {
         }
     }
 
-    private setupDeepgramListeners(): void {
-        this.deepgramService.on('transcript', (transcriptionData: TranscriptionData) => {
+    private setupTranscriptionListeners(): void {
+        this.transcriptor.on('transcription', (transcriptionData: TranscriptionData) => {
             console.log('[WebSocket] Received transcription:', transcriptionData);
             this.emit('transcription', transcriptionData);
         });
 
-        this.deepgramService.on('connected', () => {
-            console.log('[WebSocket] Deepgram connected');
+        this.transcriptor.on('connected', () => {
+            console.log('[WebSocket] Transcriptor connected');
             this.emit('deepgram-connected');
         });
 
-        this.deepgramService.on('disconnected', () => {
-            console.log('[WebSocket] Deepgram disconnected');
+        this.transcriptor.on('disconnected', () => {
+            console.log('[WebSocket] Transcriptor disconnected');
             this.emit('deepgram-disconnected');
         });
 
-        this.deepgramService.on('error', (error: any) => {
-            console.error('[WebSocket] Deepgram error:', error);
+        this.transcriptor.on('error', (error: any) => {
+            console.error('[WebSocket] Transcriptor error:', error);
             this.emit('deepgram-error', error);
         });
     }
@@ -598,7 +604,7 @@ export class WebSocketService extends EventEmitter {
     public startTranscription(): void {
         if (!this.transcriptionEnabled) {
             console.log('[WebSocket] Starting transcription service...');
-            this.deepgramService.startTranscription();
+            this.transcriptor.start();
             this.transcriptionEnabled = true;
             console.log('[WebSocket] Transcription enabled:', this.transcriptionEnabled);
         } else {
@@ -608,7 +614,7 @@ export class WebSocketService extends EventEmitter {
 
     public stopTranscription(): void {
         if (this.transcriptionEnabled) {
-            this.deepgramService.stopTranscription();
+            this.transcriptor.stop();
             this.transcriptionEnabled = false;
             console.log('[WebSocket] Transcription stopped');
         }
@@ -623,13 +629,13 @@ export class WebSocketService extends EventEmitter {
     }
 
     public isTranscriptionActive(): boolean {
-        return this.transcriptionEnabled && this.deepgramService.isTranscriptionActive();
+        return this.transcriptionEnabled && this.transcriptor.isActive();
     }
 
     public getTranscriptionStatus(): { active: boolean, connected: boolean, hasApiKey: boolean } {
-        const deepgramStatus = this.deepgramService.getConnectionStatus();
+        const deepgramStatus = this.transcriptor.getStatus();
         return {
-            active: this.transcriptionEnabled,
+            active: deepgramStatus.active,
             connected: deepgramStatus.connected,
             hasApiKey: deepgramStatus.hasApiKey
         };
@@ -637,6 +643,15 @@ export class WebSocketService extends EventEmitter {
 
     public onTranscription(callback: (transcriptionData: TranscriptionData) => void): void {
         this.on('transcription', callback);
+    }
+
+    public setTranscriptionLanguage(language?: string, detectLanguage?: boolean): void {
+        this.transcriptor.setLanguage({ language, detectLanguage });
+        // If already active, restart to apply new config
+        if (this.transcriptionEnabled) {
+            this.transcriptor.stop();
+            this.transcriptor.start();
+        }
     }
 
     public onDeepgramConnected(callback: () => void): void {
@@ -649,5 +664,22 @@ export class WebSocketService extends EventEmitter {
 
     public onDeepgramError(callback: (error: any) => void): void {
         this.on('deepgram-error', callback);
+    }
+
+    // Translation methods
+    public setAutoTranslate(enabled: boolean): void {
+        this.transcriptor.setAutoTranslate(enabled);
+    }
+
+    public isAutoTranslateEnabled(): boolean {
+        return this.transcriptor.isAutoTranslateEnabled();
+    }
+
+    public setTargetLanguage(language: string): void {
+        this.transcriptor.setTargetLanguage(language);
+    }
+
+    public getTargetLanguage(): string {
+        return this.transcriptor.getTargetLanguage();
     }
 }

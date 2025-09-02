@@ -39,7 +39,7 @@ export class DeepgramService extends EventEmitter {
         }
     }
 
-    public startTranscription(): void {
+    public startTranscription(options?: { language?: string, detectLanguage?: boolean }): void {
         if (!this.deepgramClient) {
             console.error('[Deepgram] Client not initialized');
             return;
@@ -50,17 +50,25 @@ export class DeepgramService extends EventEmitter {
             return;
         }
 
-        // Configuration qui fonctionnait avant
-        const transcriptionConfig = {
-            language: 'en', // Revenons à l'anglais qui marchait
+        // Build configuration
+        const transcriptionConfig: any = {
             punctuate: true,
             smart_format: true,
             interim_results: true,
             encoding: 'linear16',
             channels: 1,
-            sample_rate: 16000,
+            // Match common WebRTC sample rate; Deepgram will resample if needed
+            sample_rate: 48000,
             endpointing: 300  // 300ms de silence pour finaliser
         };
+
+        if (options?.detectLanguage) {
+            transcriptionConfig.detect_language = true;
+        } else if (options?.language && options.language !== 'auto') {
+            transcriptionConfig.language = options.language;
+        } else {
+            transcriptionConfig.language = 'en';
+        }
 
         console.log('[Deepgram] Starting transcription with config:', transcriptionConfig);
 

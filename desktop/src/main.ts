@@ -1,8 +1,21 @@
-import { app, ipcMain } from 'electron';
+import { app, ipcMain, session } from 'electron';
 import { MainWindow } from './window/main-window';
 import { WebSocketService } from './services/websocket';
 import { WebRTCService } from './services/webrtc';
 import path from 'path';
+import dotenv from 'dotenv';
+
+// Charger les variables d'environnement
+dotenv.config();
+
+// Configuration d'authentification
+const AUTH_CONFIG = {
+    username: process.env.AUTH_USERNAME || 'admin',
+    password: process.env.AUTH_PASSWORD || 'admin123'
+};
+
+// État d'authentification en mémoire
+let isAuthenticated = false;
 
 class LiveTradApp {
     private mainWindow: MainWindow;
@@ -10,34 +23,102 @@ class LiveTradApp {
     private webrtcService: WebRTCService;
     private useWebRTC: boolean = true; // WebRTC activé par défaut // Toggle for WebRTC vs WebSocket
 
+    private isInitialized = false;
+
     constructor() {
         this.mainWindow = new MainWindow();
-        this.wsService = new WebSocketService();
-        this.webrtcService = new WebRTCService();
-        this.setupWebRTCEventListeners();
+        // Ne pas initialiser les services ici
+        this.wsService = null as any;
+        this.webrtcService = null as any;
         this.initApp();
         this.setupIPC();
     }
 
-    private setupWebRTCEventListeners(): void {
-        this.webrtcService.on('connection-state-change', (state) => {
-            console.log('[Main] WebRTC connection state changed:', state);
-            const mainWindow = this.mainWindow.getWindow();
-            if (mainWindow) {
-                mainWindow.webContents.send('connection-change', {
-                    status: state.status,
-                    details: {
-                        clientId: state.clientId,
-                        desktopUrl: state.desktopUrl,
-                        streamInfo: state.streamInfo,
-                        timestamp: state.timestamp || new Date().toISOString(),
-                        iceState: state.iceConnectionState,
-                        connectionState: state.connectionState,
-                        signalingState: state.signalingState
-                    }
-                });
-            }
+    private async initializeServices() {
+        if (this.isInitialized) return;
+        
+        console.log('Initializing services...');
+        
+        // Initialiser les services seulement maintenant
+        this.wsService = new WebSocketService();
+        this.webrtcService = new WebRTCService();
+        
+        // Configurer les écouteurs d'événements
+        this.setupWebRTCEventListeners();
+        
+        // Configurer les écouteurs de connexion
+        this.wsService.onConnectionChange((data) => {
+            this.mainWindow.getWindow()!.webContents.send('connection-change', data);
         });
+        
+        this.wsService.on('audio-stats', (stats) => {
+            this.mainWindow.getWindow()!.webContents.send('audio-stats', stats);
+        });
+
+        // Écouter les changements de connexion WebRTC
+        this.webrtcService.on('connection-change', (data) => {
+            this.mainWindow.getWindow()!.webContents.send('webrtc-connection-change', data);
+        });
+
+        // Deepgram event handlers
+        this.wsService.onTranscription((transcriptionData) => {
+            this.mainWindow.getWindow()!.webContents.send('transcription', transcriptionData);
+        });
+
+        // Deepgram connection events
+        this.wsService.onDeepgramConnected(() => {
+            this.mainWindow.getWindow()!.webContents.send('deepgram-connected');
+        });
+
+        this.wsService.onDeepgramDisconnected(() => {
+            this.mainWindow.getWindow()!.webContents.send('deepgram-disconnected');
+        });
+
+        this.wsService.onDeepgramError((error: any) => {
+            this.mainWindow.getWindow()!.webContents.send('deepgram-error', error);
+        });
+
+        // Initialiser WebRTC
+        this.webrtcService.init();
+        
+        this.isInitialized = true;
+        console.log('Services initialized successfully');
+    }
+
+    private setupWebRTCEventListeners(): void {
+        if (!this.webrtcService) {
+            console.error('[Main] WebRTC service not initialized in setupWebRTCEventListeners');
+            return;
+        }
+
+        try {
+            this.webrtcService.on('connection-state-change', (state) => {
+                if (!state) {
+                    console.error('[Main] Received null or undefined WebRTC state');
+                    return;
+                }
+                
+                console.log('[Main] WebRTC connection state changed:', state);
+                const mainWindow = this.mainWindow?.getWindow();
+                
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('connection-change', {
+                        status: state.status || 'disconnected',
+                        details: {
+                            clientId: state.clientId,
+                            desktopUrl: state.desktopUrl,
+                            streamInfo: state.streamInfo,
+                            timestamp: state.timestamp || new Date().toISOString(),
+                            iceState: state.iceConnectionState || 'disconnected',
+                            connectionState: state.connectionState,
+                            signalingState: state.signalingState
+                        }
+                    });
+                }
+            });
+        } catch (error) {
+            console.error('[Main] Error in WebRTC event listener:', error);
+        }
 
         this.webrtcService.on('transcription', (transcriptionData) => {
             const mainWindow = this.mainWindow.getWindow();
@@ -68,87 +149,147 @@ class LiveTradApp {
         });
     }
 
+    // Vérifier l'authentification
+    private checkAuth(): boolean {
+        return isAuthenticated;
+    }
+
+    // Définir l'état d'authentification
+    private setAuthenticated(authenticated: boolean): void {
+        isAuthenticated = authenticated;
+    }
+
     private setupIPC(): void {
-        ipcMain.handle('get-connection-status', () => {
+        // Gestion de l'authentification
+        ipcMain.handle('authenticate', async (_, { username, password }) => {
+            const isValid = username === AUTH_CONFIG.username && 
+                          password === AUTH_CONFIG.password;
+            
+            if (isValid) {
+                try {
+                    await this.initializeServices();
+                    this.setAuthenticated(true);
+                    return { success: true };
+                } catch (error) {
+                    console.error('Failed to initialize services:', error);
+                    return { 
+                        success: false, 
+                        error: 'Erreur lors de l\'initialisation des services' 
+                    };
+                }
+            }
+            return { success: false, error: 'Identifiants invalides' };
+        });
+
+        // Vérifier l'état d'authentification
+        ipcMain.handle('check-auth', () => {
+            return { authenticated: this.checkAuth() };
+        });
+
+        // Déconnexion
+        ipcMain.handle('logout', () => {
+            this.setAuthenticated(false);
+            return { success: true };
+        });
+
+        // Vérifier l'authentification pour les autres endpoints
+        ipcMain.handle('get-connection-status', async () => {
+            if (!(await this.checkAuth()) || !this.wsService) {
+                return { status: 'disconnected', isAuthenticated: false };
+            }
             return this.wsService.getConnectionStatus();
         });
 
         ipcMain.handle('toggle-playback', () => {
+            if (!this.wsService) return { success: false, error: 'Service non initialisé' };
             this.wsService.togglePlayback();
             return { success: true, isPlaying: this.wsService.isPlaybackActive() };
         });
 
         ipcMain.handle('get-playback-status', () => {
+            if (!this.wsService) return { isPlaying: false };
             return { isPlaying: this.wsService.isPlaybackActive() };
         });
 
         // Gestion du volume
         ipcMain.handle('set-volume', async (_, { volume }) => {
+            if (!this.wsService) return { success: false };
             const success = await this.wsService.setVolume(volume);
             return { success };
         });
 
         // Gestion du mute
         ipcMain.handle('toggle-mute', async () => {
+            if (!this.wsService) return { success: false, isMuted: false };
             const success = await this.wsService.toggleMute();
             return { success, isMuted: this.wsService.isMuted };
         });
 
         // Obtenir l'état actuel du volume
         ipcMain.handle('get-volume', () => {
+            if (!this.wsService) return { volume: 0.8, isMuted: false };
             return { 
                 volume: this.wsService.currentVolume,
                 isMuted: this.wsService.isMuted 
             };
         });
 
-        // Deepgram transcription handlers
+        // Deepgram transcription handlers (apply to both WS and WebRTC paths)
         ipcMain.handle('toggle-transcription', () => {
-            this.wsService.toggleTranscription();
-            return { success: true, isActive: this.wsService.isTranscriptionActive() };
+            if (!this.wsService && !this.webrtcService) return { success: false, isActive: false };
+            if (this.wsService) this.wsService.toggleTranscription();
+            if (this.webrtcService) this.webrtcService.startTranscription(); // ensures WebRTC path forwards audio
+            const isActive = (this.wsService && this.wsService.isTranscriptionActive()) || false;
+            return { success: true, isActive };
         });
 
         ipcMain.handle('get-transcription-status', () => {
-            return this.wsService.getTranscriptionStatus();
+            if (!this.wsService && !this.webrtcService) return { isActive: false };
+            if (this.wsService) return this.wsService.getTranscriptionStatus();
+            return { active: false, connected: false, hasApiKey: false };
         });
 
-        // Listen for WebSocket connection changes
-        this.wsService.onConnectionChange((data) => {
-            this.mainWindow.getWindow()!.webContents.send('connection-change', data);
-        });
-        
-        this.wsService.on('audio-stats', (stats) => {
-            this.mainWindow.getWindow()!.webContents.send('audio-stats', stats);
+        // Update transcription language/detection
+        ipcMain.handle('set-transcription-language', (_evt, { language, detectLanguage }) => {
+            if (this.wsService) this.wsService.setTranscriptionLanguage(language, detectLanguage);
+            if (this.webrtcService) this.webrtcService.setTranscriptionLanguage(language, detectLanguage);
+            return { success: true };
         });
 
-        // Listen for WebRTC connection changes
-        this.webrtcService.on('connection-change', (data) => {
-            this.mainWindow.getWindow()!.webContents.send('webrtc-connection-change', data);
+        // Translation handlers
+        ipcMain.handle('toggle-auto-translate', (_evt, { enabled }) => {
+            if (this.wsService) this.wsService.setAutoTranslate(enabled);
+            if (this.webrtcService) this.webrtcService.setAutoTranslate(enabled);
+            return { success: true, enabled };
         });
 
-        // Deepgram event handlers
-        this.wsService.onTranscription((transcriptionData) => {
-            this.mainWindow.getWindow()!.webContents.send('transcription', transcriptionData);
+        ipcMain.handle('get-auto-translate-status', () => {
+            if (this.wsService) return { enabled: this.wsService.isAutoTranslateEnabled() };
+            if (this.webrtcService) return { enabled: this.webrtcService.isAutoTranslateEnabled() };
+            return { enabled: false };
         });
 
-        this.wsService.onDeepgramConnected(() => {
-            this.mainWindow.getWindow()!.webContents.send('deepgram-connected');
+        ipcMain.handle('set-target-language', (_evt, { language }) => {
+            if (this.wsService) this.wsService.setTargetLanguage(language);
+            if (this.webrtcService) this.webrtcService.setTargetLanguage(language);
+            return { success: true };
         });
 
-        this.wsService.onDeepgramDisconnected(() => {
-            this.mainWindow.getWindow()!.webContents.send('deepgram-disconnected');
+        ipcMain.handle('get-target-language', () => {
+            if (this.wsService) return { language: this.wsService.getTargetLanguage() };
+            if (this.webrtcService) return { language: this.webrtcService.getTargetLanguage() };
+            return { language: 'fr' };
         });
 
-        this.wsService.onDeepgramError((error) => {
-            this.mainWindow.getWindow()!.webContents.send('deepgram-error', error);
-        });
+        // Tous les écouteurs d'événements sont maintenant dans initializeServices()
+        // pour s'assurer qu'ils ne sont configurés qu'après l'initialisation des services
     }
 
     private initApp(): void {
         app.on('ready', () => {
             this.mainWindow.create();
-            // WebRTC only - no WebSocket
-            this.webrtcService.init();
+            // L'initialisation de WebRTC est maintenant gérée dans initializeServices()
+            // après l'authentification réussie
         });
 
         app.on('window-all-closed', () => {

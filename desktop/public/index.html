@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>LiveTrad Desktop</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' https://unpkg.com; connect-src 'self' ws: wss: http: https:; font-src 'self' https://fonts.gstatic.com data:;">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
     <link rel="stylesheet" href="style.css">
@@ -32,6 +33,7 @@
                 <div class="connection-status disconnected" id="connectionStatus">
                     <div class="status-dot"></div>
                     <span style="pointer-events: none;">Disconnected</span>
+                    <div id="connectionDetails" class="connection-details" style="display: none; font-size: 12px; margin-top: 4px; color: #888;"></div>
                 </div>
             </div>
             <div class="header-right">

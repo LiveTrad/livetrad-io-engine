@@ -1,10 +1,13 @@
 import { EventEmitter } from 'events';
 import { WebSocketServer, WebSocket } from 'ws';
 import { config } from '../config/env';
-import { DeepgramService, TranscriptionData } from './deepgram';
+import { TranscriptionData } from './deepgram';
+import { LiveTradTranscriptor } from './transcription/transcriptor';
+import { DeepgramProvider } from './transcription/providers/deepgram-provider';
 
 // Import WebRTC APIs from wrtc
 const wrtc = require('wrtc');
+const { RTCAudioSink } = wrtc?.nonstandard || {};
 const RTCPeerConnection = wrtc.RTCPeerConnection;
 const RTCSessionDescription = wrtc.RTCSessionDescription;
 const RTCIceCandidate = wrtc.RTCIceCandidate;
@@ -50,7 +53,7 @@ export class WebRTCService extends EventEmitter {
   private peerConnection: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
   private connections: Map<WebSocket, string> = new Map();
-  private deepgramService: DeepgramService;
+  private transcriptor: LiveTradTranscriptor;
   private transcriptionEnabled: boolean = false;
   private currentVolume: number = 0.8;
   private isMuted: boolean = false;
@@ -59,6 +62,7 @@ export class WebRTCService extends EventEmitter {
   // private audioDestination: MediaStreamAudioDestinationNode | null = null;
   private iceRestartAttempts: number = 0;
   private processedAudioTracks: Set<string> = new Set();
+  private audioSinks: Map<string, any> = new Map();
   private audioPlaybackProcess: any = null;
   private isPlaying: boolean = false;
   private _isPlaybackActive: boolean = false;
@@ -73,8 +77,12 @@ export class WebRTCService extends EventEmitter {
 
   constructor() {
     super();
-    this.deepgramService = new DeepgramService();
-    this.setupDeepgramListeners();
+    // Créer le service de traduction avec le provider par défaut
+    const { TranslationService } = require('./translation');
+    const translationService = new TranslationService(config.translation?.defaultProvider || 'google');
+    
+    this.transcriptor = new LiveTradTranscriptor(new DeepgramProvider(), translationService);
+    this.setupTranscriptionListeners();
   }
 
   public init(): void {
@@ -584,6 +592,9 @@ export class WebRTCService extends EventEmitter {
     // Set up audio processing
     this.setupAudioProcessing(track);
 
+    // Tap audio and forward to transcriptor if enabled
+    this.setupAudioSink(track);
+
     // Start playback automatically
     this.startPlayback();
 
@@ -617,6 +628,92 @@ export class WebRTCService extends EventEmitter {
     console.log('[WebRTC] Audio track ready for processing:', track.id);
   }
 
+  private setupAudioSink(track: MediaStreamTrack): void {
+    if (!RTCAudioSink) {
+      console.warn('[WebRTC] RTCAudioSink not available; cannot stream audio to transcriptor');
+      return;
+    }
+
+    if (this.audioSinks.has(track.id)) {
+      return;
+    }
+
+    try {
+      const sink = new RTCAudioSink(track);
+      this.audioSinks.set(track.id, sink);
+      console.log('[WebRTC] RTCAudioSink created for track:', track.id);
+
+      // wrtc nonstandard RTCAudioSink uses ondata callback
+      sink.ondata = (data: any) => {
+        try {
+          // data: { samples: number, sampleRate: number, bitsPerSample: number, numberOfChannels: number, channelData: Float32Array[] }
+          const { sampleRate, numberOfChannels, channelData, samples } = data;
+          // Downmix to mono if needed and convert to 16-bit PCM
+          const mono = new Float32Array(samples);
+          if (numberOfChannels === 1) {
+            mono.set(channelData[0]);
+          } else {
+            const ch0 = channelData[0];
+            const ch1 = channelData[1];
+            for (let i = 0; i < samples; i++) {
+              mono[i] = (ch0[i] + ch1[i]) * 0.5;
+            }
+          }
+
+          // Silence gate: skip near-silent frames
+          let peak = 0;
+          for (let i = 0; i < mono.length; i++) {
+            const v = Math.abs(mono[i]);
+            if (v > peak) peak = v;
+          }
+          if (peak < 0.003) {
+            return; // too quiet, do not send
+          }
+
+          const pcm16 = this.floatTo16BitPCM(mono);
+
+          if (this.transcriptionEnabled) {
+            // Send native sample rate (likely 48000) to Deepgram with matching config
+            this.transcriptor.sendAudioData(Buffer.from(pcm16.buffer));
+            if (Math.random() < 0.001) {
+              console.log('[WebRTC] Forwarded sink audio frame to transcriptor:', {
+                samples,
+                sampleRate,
+                numberOfChannels
+              });
+            }
+          }
+        } catch (err) {
+          console.error('[WebRTC] Error processing RTCAudioSink data:', err);
+        }
+      };
+
+      track.addEventListener('ended', () => {
+        try {
+          const s = this.audioSinks.get(track.id);
+          if (s) {
+            s.stop();
+            this.audioSinks.delete(track.id);
+            console.log('[WebRTC] RTCAudioSink stopped for track:', track.id);
+          }
+        } catch (e) {
+          console.warn('[WebRTC] Error stopping RTCAudioSink:', e);
+        }
+      });
+    } catch (error) {
+      console.error('[WebRTC] Failed to create RTCAudioSink:', error);
+    }
+  }
+
+  private floatTo16BitPCM(float32: Float32Array): Int16Array {
+    const out = new Int16Array(float32.length);
+    for (let i = 0; i < float32.length; i++) {
+      let s = Math.max(-1, Math.min(1, float32[i]));
+      out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    return out;
+  }
+
   private setupTranscription(track: MediaStreamTrack): void {
     console.log('[WebRTC] Setting up transcription for audio track');
     
@@ -628,6 +725,14 @@ export class WebRTCService extends EventEmitter {
     this.emit('transcription-started', {
       trackId: track.id
     });
+  }
+
+  public setTranscriptionLanguage(language?: string, detectLanguage?: boolean): void {
+    this.transcriptor.setLanguage({ language, detectLanguage });
+    if (this.transcriptionEnabled) {
+      this.transcriptor.stop();
+      this.transcriptor.start();
+    }
   }
 
   private sendSignalingMessage(ws: WebSocket, message: WebRTCMessage): void {
@@ -723,28 +828,38 @@ export class WebRTCService extends EventEmitter {
 
   public startTranscription(): void {
     this.transcriptionEnabled = true;
-    console.log('[WebRTC] Transcription started');
+    try {
+      this.transcriptor.start();
+      console.log('[WebRTC] Transcription started (transcriptor started)');
+    } catch (e) {
+      console.error('[WebRTC] Failed to start transcriptor:', e);
+    }
   }
 
   public stopTranscription(): void {
     this.transcriptionEnabled = false;
-    console.log('[WebRTC] Transcription stopped');
+    try {
+      this.transcriptor.stop();
+      console.log('[WebRTC] Transcription stopped (transcriptor stopped)');
+    } catch (e) {
+      console.error('[WebRTC] Failed to stop transcriptor:', e);
+    }
   }
 
-  private setupDeepgramListeners(): void {
-    this.deepgramService.on('transcript', (transcriptionData: TranscriptionData) => {
+  private setupTranscriptionListeners(): void {
+    this.transcriptor.on('transcription', (transcriptionData: TranscriptionData) => {
       this.emit('transcription', transcriptionData);
     });
 
-    this.deepgramService.on('connected', () => {
+    this.transcriptor.on('connected', () => {
       this.emit('deepgram-connected');
     });
 
-    this.deepgramService.on('disconnected', () => {
+    this.transcriptor.on('disconnected', () => {
       this.emit('deepgram-disconnected');
     });
 
-    this.deepgramService.on('error', (error: any) => {
+    this.transcriptor.on('error', (error: any) => {
       this.emit('deepgram-error', error);
     });
   }
@@ -837,9 +952,12 @@ export class WebRTCService extends EventEmitter {
         console.log('[WebRTC] Audio chunk processed, size:', audioBuffer.length);
       }
       
-      // Send to Deepgram if transcription is enabled
+      // Send to transcriptor if transcription is enabled
       if (this.transcriptionEnabled) {
-        this.deepgramService.sendAudioData(audioBuffer);
+        this.transcriptor.sendAudioData(audioBuffer);
+        if (Math.random() < 0.001) {
+          console.log('[WebRTC] Forwarded DC audio chunk to transcriptor:', audioBuffer.length);
+        }
       }
     } catch (error) {
       console.error('[WebRTC] Error handling audio data message:', error);
@@ -1086,5 +1204,22 @@ export class WebRTCService extends EventEmitter {
     } finally {
       this.isFlushing = false;
     }
+  }
+
+  // Translation methods
+  public setAutoTranslate(enabled: boolean): void {
+    this.transcriptor.setAutoTranslate(enabled);
+  }
+
+  public isAutoTranslateEnabled(): boolean {
+    return this.transcriptor.isAutoTranslateEnabled();
+  }
+
+  public setTargetLanguage(language: string): void {
+    this.transcriptor.setTargetLanguage(language);
+  }
+
+  public getTargetLanguage(): string {
+    return this.transcriptor.getTargetLanguage();
   }
 }

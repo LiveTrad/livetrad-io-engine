@@ -1,5 +1,77 @@
-// Audio monitoring state
+// État de l'application
 let audioChunksCount = 0;
+let isAuthenticated = false;
+
+// Éléments du DOM
+const loginScreen = document.getElementById('login-screen');
+const mainApp = document.getElementById('main-app');
+const loginBtn = document.getElementById('loginBtn');
+const usernameInput = document.getElementById('username');
+const passwordInput = document.getElementById('password');
+const loginError = document.getElementById('loginError');
+
+// Using secure preload bridge via window.api (no direct ipcRenderer access)
+
+// Gestion de la connexion
+async function handleLogin() {
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value;
+    const loginBtn = document.getElementById('loginBtn');
+    
+    if (!username || !password) {
+        showError('Veuillez remplir tous les champs');
+        return;
+    }
+    
+    try {
+        // Désactiver le bouton pendant la tentative de connexion
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Connexion...';
+        
+        // Utiliser l'API sécurisée exposée par le preload
+        const result = await window.api.authenticate(username, password);
+        if (result.success) {
+            isAuthenticated = true;
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('main-app').style.display = 'block';
+            
+            // Réinitialiser les champs
+            usernameInput.value = '';
+            passwordInput.value = '';
+        } else {
+            showError('Identifiants incorrects');
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Se connecter';
+        }
+    } catch (error) {
+        console.error('Erreur de connexion:', error);
+        showError('Erreur de connexion au serveur');
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Se connecter';
+    }
+}
+
+// Afficher un message d'erreur
+function showError(message) {
+    loginError.textContent = message;
+    setTimeout(() => {
+        loginError.textContent = '';
+    }, 3000);
+}
+
+// Écouteurs d'événements
+if (loginBtn) {
+    loginBtn.addEventListener('click', handleLogin);
+}
+
+// Permettre la soumission avec Entrée
+if (passwordInput) {
+    passwordInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            handleLogin();
+        }
+    });
+}
 
 // Transcription state
 let isTranscriptionActive = false;
@@ -75,15 +147,15 @@ function handleAudioData(audioData) {
 }
 
 // Listen for connection changes
-window.api.onConnectionChange((status, details) => {
-    const isConnected = status || details.connectedState === 'connected';
-    console.log('Connection status changed:', status, 'details:', details);
-    updateStatus(isConnected, details);
+window.api.onConnectionChange((data) => {
+    // const isConnected = status === "connected" || details?.connectedState === 'connected';
+    console.log('Connection status changed:', data.status, 'details:', data.details);
+    updateStatus(data.status , data.details);
 });
 
 // Listen for audio data
-window.api.onAudioStats((audioData) => {
-    console.log('Received audio data, length:', audioData.length);
+window.api.onAudioStats((_fakeBuffer, _stats) => {
+    // We only need to count updates for UI feedback
     audioChunksCount++;
     const chunksElement = document.getElementById('audioChunksReceived');
     if (chunksElement) {
@@ -94,8 +166,8 @@ window.api.onAudioStats((audioData) => {
 // Initialize on DOM content loaded
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Application initialized');
-
-    updateStatus(false, {});
+    const defaultStatus = "disconnected";
+    updateStatus(defaultStatus, {});
     
     // Check initial connection status
     window.api.getConnectionStatus()
@@ -105,20 +177,21 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .catch(error => {
             console.error('Error getting connection status:', error);
-            updateStatus(false);
+            updateStatus(defaultStatus, {});
         });
 
-    // Transcription elements (simplified)
-    const toggleTranscriptionCheckbox = document.getElementById('toggleTranscriptionCheckbox');
-    
-    // Initialize transcription if elements exist
+    // Transcription elements
+    const toggleTranscriptionCheckbox = document.getElementById('toggleTranscription');
     if (toggleTranscriptionCheckbox) {
         toggleTranscriptionCheckbox.checked = isTranscriptionActive;
-        
-        toggleTranscriptionCheckbox.addEventListener('change', () => {
-            isTranscriptionActive = toggleTranscriptionCheckbox.checked;
-            console.log('Transcription toggled:', isTranscriptionActive);
-            // Add any additional transcription handling here
+        toggleTranscriptionCheckbox.addEventListener('change', async () => {
+            try {
+                const result = await window.api.toggleTranscription();
+                isTranscriptionActive = !!(result && (result.isActive || result.active));
+                updateTranscriptionStatus();
+            } catch (error) {
+                console.error('Error toggling transcription:', error);
+            }
         });
     }
 });
@@ -138,33 +211,71 @@ function updateTranscriptionStatus() {
 function addTranscriptionToDisplay(transcriptionData) {
     const currentTranscription = document.getElementById('currentTranscription');
     const completedTranscriptions = document.getElementById('completedTranscriptions');
+    const autoTranslateCheckbox = document.getElementById('autoTranslate');
+    const isAutoTranslateEnabled = autoTranslateCheckbox ? autoTranslateCheckbox.checked : false;
     
-    if (transcriptionData.isFinal) {
+    // Handle both old format (direct transcription) and new format (with translation)
+    let transcription = transcriptionData;
+    let translation = null;
+    
+    if (transcriptionData.transcription) {
+        // New format with translation
+        transcription = transcriptionData.transcription;
+        translation = transcriptionData.translation;
+    }
+    
+    if (transcription.isFinal) {
         // Transcription finale - ajouter à l'historique
         const completedItem = document.createElement('div');
         completedItem.className = 'completed-transcript';
         
+        // Original transcription text
         const transcriptText = document.createElement('span');
-        transcriptText.textContent = transcriptionData.transcript;
+        transcriptText.textContent = transcription.transcript;
         
         const confidenceText = document.createElement('span');
         confidenceText.className = 'transcript-confidence';
-        confidenceText.textContent = ` (${(transcriptionData.confidence * 100).toFixed(1)}%)`;
+        confidenceText.textContent = ` (${(transcription.confidence * 100).toFixed(1)}%)`;
         
         const languageBadge = document.createElement('span');
         languageBadge.className = 'language-indicator';
-        languageBadge.textContent = detectedLanguage;
+        languageBadge.textContent = transcription.language || detectedLanguage;
         
         const timestamp = document.createElement('div');
         timestamp.style.fontSize = '0.8em';
         timestamp.style.color = '#999';
         timestamp.style.marginTop = '2px';
-        timestamp.textContent = transcriptionData.timestamp.toLocaleTimeString();
+        timestamp.textContent = transcription.timestamp.toLocaleTimeString();
         
         completedItem.appendChild(transcriptText);
         completedItem.appendChild(confidenceText);
         completedItem.appendChild(languageBadge);
         completedItem.appendChild(timestamp);
+        
+        // Add translation if available and auto-translate is enabled
+        if (translation && isAutoTranslateEnabled) {
+            const translationDiv = document.createElement('div');
+            translationDiv.className = 'translation-text';
+            translationDiv.style.marginTop = '4px';
+            translationDiv.style.padding = '4px 8px';
+            translationDiv.style.backgroundColor = 'rgba(0, 255, 136, 0.1)';
+            translationDiv.style.borderLeft = '3px solid #00ff88';
+            translationDiv.style.borderRadius = '4px';
+            translationDiv.style.fontStyle = 'italic';
+            translationDiv.style.color = '#00ff88';
+            
+            const translationLabel = document.createElement('span');
+            translationLabel.textContent = 'TRANSLATED: ';
+            translationLabel.style.fontWeight = 'bold';
+            translationLabel.style.fontSize = '0.8em';
+            
+            const translationContent = document.createElement('span');
+            translationContent.textContent = translation.translatedText;
+            
+            translationDiv.appendChild(translationLabel);
+            translationDiv.appendChild(translationContent);
+            completedItem.appendChild(translationDiv);
+        }
         
         completedTranscriptions.appendChild(completedItem);
         
@@ -177,12 +288,31 @@ function addTranscriptionToDisplay(transcriptionData) {
         
     } else {
         // Transcription intermédiaire - mettre à jour la ligne courante
-        currentInterimText = transcriptionData.transcript;
-        currentTranscription.innerHTML = `
-            <span>${transcriptionData.transcript}</span>
-            <span class="transcript-confidence">(${(transcriptionData.confidence * 100).toFixed(1)}%)</span>
-            <span class="language-indicator">${detectedLanguage}</span>
+        currentInterimText = transcription.transcript;
+        let displayText = `
+            <span>${transcription.transcript}</span>
+            <span class="transcript-confidence">(${(transcription.confidence * 100).toFixed(1)}%)</span>
+            <span class="language-indicator">${transcription.language || detectedLanguage}</span>
         `;
+        
+        // Add translation for interim text if available and auto-translate is enabled
+        if (translation && isAutoTranslateEnabled) {
+            const isInterim = translation.isInterim;
+            const translationStyle = isInterim ? 
+                'background-color: rgba(255, 193, 7, 0.1); border-left: 3px solid #ffc107; color: #ffc107;' :
+                'background-color: rgba(0, 255, 136, 0.1); border-left: 3px solid #00ff88; color: #00ff88;';
+            
+            const translationLabel = isInterim ? 'TRANSLATING...' : 'TRANSLATED:';
+            
+            displayText += `
+                <div style="margin-top: 4px; padding: 4px 8px; ${translationStyle} border-radius: 4px; font-style: italic;">
+                    <span style="font-weight: bold; font-size: 0.8em;">${translationLabel} </span>
+                    <span>${translation.translatedText}</span>
+                </div>
+            `;
+        }
+        
+        currentTranscription.innerHTML = displayText;
     }
 }
 
@@ -217,9 +347,12 @@ function hideTranscriptionError() {
 // Initialize transcription status
 async function updateTranscriptionCheckboxState() {
     try {
-        const status = await window.api.invoke('get-transcription-status');
-        isTranscriptionActive = status.active;
-        toggleTranscriptionCheckbox.checked = isTranscriptionActive;
+        const status = await window.api.getTranscriptionStatus();
+        isTranscriptionActive = status.isActive || status.active;
+        const toggleCheckbox = document.getElementById('toggleTranscription');
+        if (toggleCheckbox) {
+            toggleCheckbox.checked = isTranscriptionActive;
+        }
         updateTranscriptionStatus();
     } catch (error) {
         console.error('Error getting transcription status:', error);
@@ -228,3 +361,14 @@ async function updateTranscriptionCheckboxState() {
 
 // Call on startup
 updateTranscriptionCheckboxState();
+
+// Subscribe to transcription events from main process via preload bridge
+window.api.onTranscription((transcriptionData) => {
+    if (!isTranscriptionActive) return; // ignore when disabled
+    try {
+        if (!transcriptionData) return;
+        addTranscriptionToDisplay(transcriptionData);
+    } catch (e) {
+        console.error('Error handling transcription event:', e);
+    }
+});

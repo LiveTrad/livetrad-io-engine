@@ -495,6 +495,8 @@
             display: flex;
             flex-direction: column;
             gap: 8px;
+            max-height: 40vh;
+            overflow-y: auto;
         }
         
         .completed-transcript {
@@ -512,6 +514,26 @@
         .completed-transcript:hover {
             background: rgba(40, 40, 40, 0.9);
             transform: translateX(2px);
+        }
+
+        /* Translation styles */
+        .translation-text {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: rgba(0, 255, 136, 0.1);
+            border-left: 3px solid #00ff88;
+            border-radius: 4px;
+            font-style: italic;
+            color: #00ff88;
+            font-size: 12px;
+            line-height: 1.3;
+        }
+
+        .translation-text span:first-child {
+            font-weight: bold;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         /* Language Selection */
