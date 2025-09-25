@@ -254,30 +254,7 @@ function addTranscriptionToDisplay(transcriptionData) {
         completedItem.appendChild(languageBadge);
         completedItem.appendChild(timestamp);
         
-        // Afficher uniquement la traduction de la phrase actuelle
         if (translation && isAutoTranslateEnabled && translation.translatedText) {
-            console.log("Current translation ", translation, isAutoTranslateEnabled, translation.translatedText)
-
-            // Pour éviter les répétitions, on ne prend que la dernière partie de la traduction
-            // qui correspond à la dernière phrase complète
-            let displayTranslation = translation.translatedText;
-            
-            // Trouver la dernière phrase complète (séparée par un point)
-            const sentences = displayTranslation.split('.');
-            if (sentences.length > 1) {
-                // Prendre uniquement la dernière phrase non vide
-                for (let i = sentences.length - 1; i >= 0; i--) {
-                    const sentence = sentences[i].trim();
-                    if (sentence.length > 0) {
-                        displayTranslation = sentence;
-                        // Ajouter un point si ce n'est pas une phrase interrogative ou exclamative
-                        if (!['?', '!'].includes(displayTranslation.slice(-1))) {
-                            displayTranslation += '.';
-                        }
-                        break;
-                    }
-                }
-            }
             const translationDiv = document.createElement('div');
             translationDiv.className = 'translation-text';
             translationDiv.style.marginTop = '4px';
@@ -287,16 +264,15 @@ function addTranscriptionToDisplay(transcriptionData) {
             translationDiv.style.borderRadius = '4px';
             translationDiv.style.fontStyle = 'italic';
             translationDiv.style.color = '#00ff88';
-            translationDiv.textContent = displayTranslation;
-            
+
             const translationLabel = document.createElement('span');
             translationLabel.textContent = 'TRANSLATED: ';
             translationLabel.style.fontWeight = 'bold';
             translationLabel.style.fontSize = '0.8em';
-            
+
             const translationContent = document.createElement('span');
             translationContent.textContent = translation.translatedText;
-            
+
             translationDiv.appendChild(translationLabel);
             translationDiv.appendChild(translationContent);
             completedItem.appendChild(translationDiv);
@@ -320,27 +296,8 @@ function addTranscriptionToDisplay(transcriptionData) {
             <span class="language-indicator">${transcription.language || detectedLanguage}</span>
         `;
         
-        // Afficher uniquement la traduction de la phrase actuelle pour le texte intermédiaire
+        // Afficher la traduction pour le texte intermédiaire
         if (translation && isAutoTranslateEnabled && translation.translatedText) {
-            // Pour le texte intermédiaire, on prend uniquement la dernière phrase complète
-            let displayTranslation = translation.translatedText;
-            
-            // Trouver la dernière phrase complète (séparée par un point)
-            const sentences = displayTranslation.split('.');
-            if (sentences.length > 1) {
-                // Prendre uniquement la dernière phrase non vide
-                for (let i = sentences.length - 1; i >= 0; i--) {
-                    const sentence = sentences[i].trim();
-                    if (sentence.length > 0) {
-                        displayTranslation = sentence;
-                        // Ajouter un point si ce n'est pas une phrase interrogative ou exclamative
-                        if (!['?', '!', '...'].includes(displayTranslation.slice(-1))) {
-                            displayTranslation += '.';
-                        }
-                        break;
-                    }
-                }
-            }
             const isInterim = !transcription.isFinal;
             const translationStyle = isInterim ? 
                 'background-color: rgba(255, 193, 7, 0.1); border-left: 3px solid #ffc107; color: #ffc107;' :
@@ -351,7 +308,7 @@ function addTranscriptionToDisplay(transcriptionData) {
             displayText += `
                 <div style="margin-top: 4px; padding: 4px 8px; ${translationStyle} border-radius: 4px; font-style: italic;">
                     <span style="font-weight: bold; font-size: 0.8em;">${translationLabel} </span>
-                    <span>${displayTranslation}</span>
+                    <span>${translation.translatedText}</span>
                 </div>
             `;
         }
