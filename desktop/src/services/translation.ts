@@ -26,11 +26,7 @@ export class TranslationService extends EventEmitter {
     private translationCache: Map<string, string> = new Map();
     private currentProvider: TranslationProvider;
     
-    // Pour le streaming comme Vapi
-    private streamingBuffer: string = '';
-    private lastTranslatedSegment: string = '';
-    private streamingTimeout: NodeJS.Timeout | null = null;
-    private readonly STREAMING_DELAY = 500; // 500ms comme Vapi
+
 
     constructor(providerType: string = 'google') {
         super();
@@ -59,7 +55,6 @@ export class TranslationService extends EventEmitter {
 
     public disable(): void {
         this.isEnabled = false;
-        this.clearStreamingBuffer();
         console.log('[Translation] Service disabled');
     }
 
@@ -76,60 +71,22 @@ export class TranslationService extends EventEmitter {
         return this.targetLanguage;
     }
 
-    // Nouvelle méthode pour le streaming comme Vapi
     public async translateStreamingSegment(segment: StreamingTranslationSegment): Promise<TranslationData | null> {
         if (!this.isEnabled || !segment.text.trim()) {
             return null;
         }
 
-        // Ajouter au buffer streaming
-        this.addToStreamingBuffer(segment.text);
+        // Traduire directement le texte du segment, car il contient déjà le transcript complet
+        const translated = await this.translateText(segment.text, segment.language);
 
-        // Si c'est final, traduire immédiatement
-        if (segment.isFinal) {
-            return this.translateFinalSegment(segment);
+        if (translated) {
+            translated.isInterim = !segment.isFinal;
         }
 
-        // Sinon, utiliser le délai streaming comme Vapi
-        return this.translateInterimSegment(segment);
+        return translated;
     }
 
-    private addToStreamingBuffer(text: string): void {
-        this.streamingBuffer += ' ' + text;
-        this.streamingBuffer = this.streamingBuffer.trim();
-    }
 
-    private async translateFinalSegment(segment: StreamingTranslationSegment): Promise<TranslationData | null> {
-        const fullText = this.streamingBuffer;
-        this.clearStreamingBuffer();
-        
-        return this.translateText(fullText, segment.language);
-    }
-
-    private async translateInterimSegment(segment: StreamingTranslationSegment): Promise<TranslationData | null> {
-        // Clear previous timeout
-        if (this.streamingTimeout) {
-            clearTimeout(this.streamingTimeout);
-        }
-
-        return new Promise((resolve) => {
-            this.streamingTimeout = setTimeout(async () => {
-                const translated = await this.translateText(this.streamingBuffer, segment.language);
-                if (translated) {
-                    translated.isInterim = true;
-                }
-                resolve(translated);
-            }, this.STREAMING_DELAY);
-        });
-    }
-
-    private clearStreamingBuffer(): void {
-        this.streamingBuffer = '';
-        if (this.streamingTimeout) {
-            clearTimeout(this.streamingTimeout);
-            this.streamingTimeout = null;
-        }
-    }
 
     public async translateText(text: string, sourceLanguage?: string): Promise<TranslationData | null> {
         if (!this.isEnabled || !text.trim()) {

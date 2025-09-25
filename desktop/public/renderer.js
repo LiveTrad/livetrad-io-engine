@@ -217,6 +217,7 @@ function addTranscriptionToDisplay(transcriptionData) {
     
     // Handle both old format (direct transcription) and new format (with translation)
     let transcription = transcriptionData;
+    console.log("Received transcription data:", transcriptionData, isAutoTranslateEnabled);
     let translation = null;
     
     if (transcriptionData.transcription) {
@@ -253,8 +254,10 @@ function addTranscriptionToDisplay(transcriptionData) {
         completedItem.appendChild(languageBadge);
         completedItem.appendChild(timestamp);
         
-                // Afficher uniquement la traduction de la phrase actuelle
+        // Afficher uniquement la traduction de la phrase actuelle
         if (translation && isAutoTranslateEnabled && translation.translatedText) {
+            console.log("Current translation ", translation, isAutoTranslateEnabled, translation.translatedText)
+
             // Pour éviter les répétitions, on ne prend que la dernière partie de la traduction
             // qui correspond à la dernière phrase complète
             let displayTranslation = translation.translatedText;
